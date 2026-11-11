@@ -49,6 +49,7 @@ glab mr create \
   --title "EPMCDME-XXXX: Capital sentence" \
   --target-branch main \
   --remove-source-branch \
+  --draft \
   --yes
 ```
 
