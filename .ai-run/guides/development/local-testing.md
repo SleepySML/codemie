@@ -29,4 +29,4 @@
 |---|---|---|
 | Run one test file | `poetry run pytest <path>` | `Makefile::test` |
 | Skip enterprise tests | add `--skip-enterprise` | `tests/conftest.py::pytest_addoption` |
-| Run the live-stack tests | set `RUN_LIVE_STACK_TESTS=1` and select `-m live_stack` | `pytest.ini::live_stack` |
+| Run the live-stack tests | set `RUN_LIVE_STACK_TESTS=1` and select `-m live_stack` | `tests/codemie/service/analytics/handlers/test_workflow_executions_live.py::pytestmark` |

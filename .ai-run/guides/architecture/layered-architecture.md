@@ -25,7 +25,7 @@ The backend is a FastAPI app assembled in one module: it registers routers, midd
 
 | Symptom | Cause | Fix | Evidence |
 |---|---|---|---|
-| A new user-management or ServiceNow route returns 404 | those routers are included only when `ENABLE_USER_MANAGEMENT` (and `SERVICENOW_INTEGRATION_ENABLED`) is on | enable the flag in the environment, or include the router outside the flag block when it is unconditional | `src/codemie/rest_api/main.py::SERVICENOW_INTEGRATION_ENABLED` |
+| A new user-management or provisioning route returns 404 | user-management routers are included only when `ENABLE_USER_MANAGEMENT` is on, and `mount_provisioning_api` mounts `/v1/provisioning` only when `PROVISIONING_API_ENABLED` and `ENABLE_USER_MANAGEMENT` are both on | enable the flags in the environment, or include the router outside the flag block when it is unconditional | `src/codemie/rest_api/routers/provisioning/__init__.py::mount_provisioning_api` |
 
 ## Quick reference
 

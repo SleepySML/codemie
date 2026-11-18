@@ -17,6 +17,12 @@
 - R1. Protect routes with `authenticate` and the role dependencies; do not parse bearer or bind-key headers in an endpoint. Evidence: `src/codemie/rest_api/security/authentication.py::authenticate`
 - R2. Keep credentials in `Config` fields or integration settings, and list new secret keys in `LIST_OF_SENSITIVE_FIELDS`; do not log tokens. Evidence: `src/codemie/service/settings/settings.py::LIST_OF_SENSITIVE_FIELDS`
 - R3. Parse external input strictly (`errors="strict"`) and treat what does not parse as unknown, without lossy repair before a security decision. Evidence: `src/codemie/triggers/bindings/gitlab_webhook_security.py::GitLabWebhookSecurity._parse_body`
+- R4. Check a named USER grant with `grant_exists` (or `live_grants`) from `permission.py`, passing the type's recipient policy such as `eligible_internal_user` (it joins `users` and is empty while `ENABLE_USER_MANAGEMENT` is off); `Permission.get_for` reads APPLICATION grants only. Evidence: `src/codemie/rest_api/models/permission.py::grant_exists`
+
+### Constraints
+| Do not | Do instead | Why | Evidence |
+|---|---|---|---|
+| Protect a read route over an owner-only view of a resource (its grantees, a sharing search) with `authenticate` alone | Go through a service method that checks the owner before reading, as `AssistantShareService.list_for_owner` does | any signed-in user could list another owner's grantees or search the user directory | `src/codemie/service/assistant/assistant_share_service.py::AssistantShareService.list_for_owner` |
 
 ## Examples
 

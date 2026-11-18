@@ -4,7 +4,7 @@
 
 ## Overview
 
-Routers live under `src/codemie/rest_api/routers/`; a large router is a package whose `__init__.py` builds the parent `APIRouter` with tags, prefix and the `authenticate` dependency and includes its submodules in order. Errors leave through exception handlers and a fallback middleware in `main.py`.
+Routers live under `src/codemie/rest_api/routers/`; a large router is a package whose `__init__.py` builds the parent `APIRouter` with tags, prefix, the `authenticate` dependency and, for an LLM-backed package, `require_core`, and includes its submodules in order. Errors leave through exception handlers and a fallback middleware in `main.py`.
 
 | Part | What it holds | Start here |
 |---|---|---|
@@ -16,10 +16,11 @@ Routers live under `src/codemie/rest_api/routers/`; a large router is a package 
 ## Routers
 
 ### Rules
-- R1. Register a router with `app.include_router` in `main.py`; a large router becomes a package whose `__init__.py` builds the parent `APIRouter` (tags, prefix, `authenticate`) and includes each submodule's bare `router`. Evidence: `src/codemie/rest_api/routers/conversation/__init__.py::router`
+- R1. Register a router with `app.include_router` in `main.py`; a large router becomes a package whose `__init__.py` builds the parent `APIRouter` (tags, prefix, `authenticate` and, for LLM-backed routers, `require_core`) and includes each submodule's bare `router`. Evidence: `src/codemie/rest_api/routers/conversation/__init__.py::router`
 - R2. Keep a literal path ahead of a parameterized one when ordering includes (Starlette serves the first match); the route-precedence guard fails when a recorded pair swaps. Evidence: `tests/codemie/rest_api/router_guards/test_route_precedence.py::test_baseline_order_is_preserved`
-- R3. Raise `ValidationException`, `NotFoundException` or `ExtendedHTTPException` and let the handlers in `main.py` build the error body; pass client-safe `details` on a 5xx other than 500, which the handler returns as given. Evidence: `src/codemie/rest_api/main.py::extended_http_exception_handler`
+- R3. Raise `ValidationException`, `NotFoundException` or `ExtendedHTTPException` and let the handlers in `main.py` build the error body; pass client-safe `details` on any 5xx except an unexpected 500 (`expected=False`), which the handler returns as given. Evidence: `src/codemie/rest_api/main.py::extended_http_exception_handler`
 - R4. Depend on `authenticate` and the role dependencies (`admin_access_only` and siblings) instead of parsing auth headers in an endpoint. Evidence: `src/codemie/rest_api/security/authentication.py::admin_access_only`
+- R5. Add `Depends(require_core)` to a router or endpoint that needs the LLM-backed core: in STANDALONE mode without a core provider it answers 404 and `schema_routes` hides the route from the OpenAPI schema; `test_every_core_route_is_guarded` fails only for an unguarded route under `/v1/assistants`, `/v1/workflows`, `/v1/conversations`, `/v1/skills` or `/v1/ide/inference`, so a route elsewhere relies on the author. Evidence: `src/codemie/rest_api/dependencies/core.py::require_core`
 
 ## Examples
 
@@ -31,7 +32,7 @@ Source: `src/codemie/rest_api/routers/conversation/__init__.py::router`
 router = APIRouter(
     tags=["Conversation"],
     prefix="/v1",
-    dependencies=[Depends(authenticate)],
+    dependencies=[Depends(require_core), Depends(authenticate)],
 )
 ```
 
@@ -39,7 +40,7 @@ router = APIRouter(
 
 | Symptom | Cause | Fix | Evidence |
 |---|---|---|---|
-| A 503 or 502 from an `ExtendedHTTPException` shows internal details to the client | the handler replaces `details` with the request-id message only for code 500; other 5xx codes return `exc.details` as given | raise 500 for internal faults, or pass client-safe `details` | `src/codemie/rest_api/main.py::extended_http_exception_handler` |
+| A 503 or 502 from an `ExtendedHTTPException` shows internal details to the client | the handler replaces `details` with the request-id message only for an unexpected 500 (`expected=False`); other 5xx codes and any `expected=True` 5xx return `exc.details` as given | raise 500 for internal faults, or pass client-safe `details` | `src/codemie/rest_api/main.py::extended_http_exception_handler` |
 | An unhandled exception surfaces as a raw traceback locally but a generic 500 in other environments | `handle_exceptions` re-raises when `config.is_local` | reproduce error-body behaviour with a non-local `ENV` | `src/codemie/rest_api/main.py::handle_exceptions` |
 
 ## Quick reference

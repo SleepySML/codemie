@@ -96,8 +96,8 @@ A tool that creates or changes external records must override `is_safe(args)` (T
 | Matching the raw URL argument | Normalise it first (leading slash, query string, API version such as `latest`) |
 | Raising from `written_refs` | Return `None`. The caller already ignores exceptions, but logs them only at debug level. |
 
-Evidence: default at `src/codemie_tools/base/codemie_tool.py:122` (`()` for a safe call, `None` otherwise); reference override `GenericJiraIssueTool.written_refs` at `src/codemie_tools/core/project_management/jira/tools.py:144`; consumer `_tool_written_refs` at `src/codemie/agents/truncation_report.py:210`; tests at `tests/codemie_tools/core/project_management/jira/test_written_refs.py`.
+Evidence: default `src/codemie_tools/base/codemie_tool.py::CodeMieTool.written_refs` (`()` for a safe call, `None` otherwise; tests `tests/codemie_tools/base/test_codemie_tool_is_safe.py::test_default_written_refs_cannot_tell_for_a_mutating_call`); reference override `src/codemie_tools/core/project_management/jira/tools.py::GenericJiraIssueTool.written_refs`; consumer `src/codemie/agents/truncation_report.py::_tool_written_refs` (fallback `src/codemie/agents/truncation_report.py::_written_keys`; tests `tests/codemie/agents/test_truncation_report.py`); tests `tests/codemie_tools/core/project_management/jira/test_written_refs.py::test_issue_create_names_the_key_from_the_response_body`.
 
 ## Registry
 
-A new `CodeMieTool` subclass registers itself in `codemie_tools/base/tool_registry.py` automatically; new static facts about tool classes extend `ToolRecord` there, not a new scan.
+A new `CodeMieTool` subclass that is concrete, has a default `name` and is defined under `codemie_tools.` or `codemie.` registers itself when defined (`src/codemie_tools/base/tool_registry.py::register`); new static facts about tool classes extend `ToolRecord` there, not a new scan.

@@ -18,7 +18,7 @@ pytest collects `tests/` with `pythonpath = src`, xdist (`-n 3`) and env pins fr
 ### Rules
 - R1. Mirror `src/` under an existing test root and reuse its fixtures instead of a new top-level test tree; mock provider boundaries unless the test is an integration test. Evidence: `pytest.ini::testpaths`
 - R2. Put a test under `tests/codemie/` or `tests/codemie_tools/` at the path that mirrors its source module, named `test_<module>.py` (pytest collects `testpaths = tests` with `pythonpath = src`). Evidence: `pytest.ini::testpaths`
-- R3. Mark a test that needs the enterprise package `enterprise`, the running docker stack `live_stack`, or the live Postgres and Elasticsearch stack `live_index` (the markers are declared in `pytest.ini`, and `--skip-enterprise` skips the first). Evidence: `pytest.ini::markers`
+- R3. Mark a test that needs the enterprise package `enterprise` (the only marker declared in `pytest.ini`; `--skip-enterprise` skips it); give a test that needs the running docker stack a module `pytestmark` of `pytest.mark.live_stack` plus `skipif(os.getenv("RUN_LIVE_STACK_TESTS") != "1")`, since the undeclared marker gates nothing by itself. Evidence: `tests/codemie/service/analytics/handlers/test_workflow_executions_live.py::pytestmark`
 
 ## Running tests
 
@@ -43,13 +43,20 @@ pytest collects `tests/` with `pythonpath = src`, xdist (`-n 3`) and env pins fr
 ### Rules
 - R1. For a helper that encodes a decision, add one callsite test per branch asserting the value that reaches the boundary (SDK call, request), not only a unit test of the helper. Evidence: `tests/codemie/rest_api/routers/test_projects_router.py::TestProjectCreationEndpoint.test_create_project_calls_service_directly`
 - R2. Patch a name in the module that looks it up, such as `codemie.rest_api.routers.projects.crud.project_service`, with `unittest.mock.patch`; use `patch.object` for attributes of a class or of `config`. Evidence: `tests/codemie/rest_api/routers/test_projects_router.py::TestProjectCreationEndpoint.test_create_project_calls_service_directly`
-- R3. Mock external HTTP, provider SDKs and the database in unit tests; reach real services in tests marked `live_stack` or `live_index`, or gated on `TEST_LOCAL_PG_URL`. Evidence: `tests/codemie/repository/cli_analytics/postgres/test_live_catalog_money.py::pytestmark`
+- R3. Mock external HTTP, provider SDKs and the database in unit tests; reach real services only in tests marked `live_stack` or gated on `TEST_LOCAL_PG_URL` or `HOSTED_TEST_DATABASE_URL`. Evidence: `tests/codemie/repository/cli_analytics/postgres/test_live_route_pricing.py::pytestmark`
 
 ## Database testing
 
 ### Rules
 - R1. Test transaction behaviour on an in-memory SQLite engine patched into `PostgresClient.get_engine`, creating the tables the test needs. Evidence: `tests/codemie/clients/test_postgres_transactional_session.py::sqlite_engine`
-- R2. Put PostgreSQL-specific SQL tests in `test_live_*` modules that skip without `TEST_LOCAL_PG_URL`, and run them with `make test-cli-analytics-live`, which fails when a live test skips. Evidence: `Makefile::test-cli-analytics-live`
+- R2. Put PostgreSQL-specific SQL tests of CLI analytics in `test_live_*` modules under `tests/codemie/repository/cli_analytics/postgres/`, taking the engine from `get_live_engine` (it skips when no PostgreSQL is reachable at `TEST_LOCAL_PG_URL`, default `localhost:5432`); run them with `TEST_LOCAL_PG_URL=... poetry run pytest <dir> -k live -rs` and treat a skip as not run. Service-level PostgreSQL tests live in `*_pg.py` modules whose `pytestmark` skips without `TEST_LOCAL_PG_URL` or `HOSTED_TEST_DATABASE_URL`. Evidence: `tests/codemie/repository/cli_analytics/support/live_engine.py::get_live_engine`
+- R3. Test hosted-applications and permission SQL that needs PostgreSQL by requesting the `database` fixture from `tests/codemie/service/hosted_applications/conftest.py` rather than building a new engine; it skips unless `HOSTED_TEST_DATABASE_URL` points at an isolated PostgreSQL database, installs the hosted migrations plus `users`/`user_projects` in a fresh `hosted_test_<hex>` schema, and drops it on teardown. Evidence: `tests/codemie/service/hosted_applications/conftest.py::database`
+- R4. When a SQLite test depends on foreign-key enforcement or SAVEPOINTs (`begin_nested`), build the engine with `constrained_sqlite_engine()` from `tests/codemie/sqlite_harness.py` instead of a bare `create_engine("sqlite://")` (SQLite leaves foreign keys off and pysqlite's own BEGIN breaks SAVEPOINT, so the test passes or fails for the wrong reason); it also compiles JSONB and ARRAY as JSON. Evidence: `tests/codemie/sqlite_harness.py::constrained_sqlite_engine`
+
+### Constraints
+| Do not | Do instead | Why | Evidence |
+|---|---|---|---|
+| Do not pin a rewritten or batched query only by its SQL text or against a literal expected value | Do instead seed the same data and assert the new read returns what the read it replaces returns, on Postgres in a `test_live_*` module for SQL, as `TestEveryFilterOfABatchGetsTheCardsItsOwnReadGives` does | a SQL-text assertion is built with the builder's own escaping and a literal does not move when the original changes, so neither catches a divergence | `tests/codemie/service/spend/test_spend_group_aggregation.py::TestEveryFilterOfABatchGetsTheCardsItsOwnReadGives` |
 
 ## API testing
 

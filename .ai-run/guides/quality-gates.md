@@ -175,13 +175,13 @@ To run live checks against the changed behavior, follow `.ai-run/guides/testing/
 
 A gate here can fail for reasons unrelated to the change. The table is in
 [`security/README.md`](security/README.md#exit-codes-that-mislead) — `make gitleaks` needing Docker,
-the pre-push hook running `make sonar-local` when `CODEMIE_PREPUSH_ENABLED` is on, and collection errors caused by a stale environment.
+the pre-push hook, and collection errors caused by a stale environment. The pre-push hook always runs the Alembic heads check first and blocks the push on more than one head or when no working `python3`/`python` exists; it runs pytest plus `make sonar-local` only when `CODEMIE_PREPUSH_ENABLED` is on (`scripts/git-hooks/pre_push.sh::ALEMBIC_CHECK_CMD`).
 
 A gate that could not run is unverified, not passed.
 
 ## After merge
 
-No job in `.gitlab-ci.yml` runs these gates: it holds a `pre-ci-guard` stage for merge request pipelines, whose `wait-ci-init` job (from the included `codemie-gitlab-templates` file) waits for the `ci-pipeline` and `compliance-report` contexts on MRs into `main`.
+No job in `.gitlab-ci.yml` runs the test or lint gates: it holds a `pre-ci-guard` stage for merge request pipelines, whose `wait-ci-init` job (from the included `codemie-gitlab-templates` file) waits for the `ci-pipeline` and `compliance-report` contexts on MRs into `main`. Beside it, `check-alembic-heads` (`.gitlab-ci.yml::check-alembic-heads`) is the only check the repository pipeline itself executes: on MRs into `main` it fails when the migration history, merged with `origin/main`, has more than one Alembic head. It runs no tests.
 
 ```bash
 ls .gitlab-ci.yml .github/workflows

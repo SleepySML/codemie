@@ -18,6 +18,7 @@ Ruff is the only linter and formatter: `make ruff` formats, applies safe fixes a
 - R1. Run the lint command `.ai-run/guides/quality-gates.md` names before committing, and `git add` the files it rewrites (the `codemie-pre-commit` hook fails when Ruff would change a staged file). Evidence: `.pre-commit-config.yaml::codemie-pre-commit`
 - R2. Give a new `.py` or `.sh` file the Apache 2.0 header; `make license-fix` adds it (the pre-commit hook runs the checker in `--check` mode). Evidence: `scripts/git-hooks/pre_commit.sh::LICENSE_CMD`
 - R3. Leave generated and external code (`src/external/*`, generated plugin code) to its configured ignores instead of editing it for style. Evidence: `pyproject.toml::tool.ruff.lint.per-file-ignores`
+- R4. Before an MR run `make ruff-changed`: it fails on new `C901,B,SIM,PL,RET,ARG,PTH,UP,S` issues in Python files changed since the merge base outside `tests/` and `test/`, counted per file, rule and message (not line), so issues a file already had pass; fix them or add `# noqa: <rule>` with a reason. Evidence: `scripts/check_ruff_changed.py::new_issues`, `Makefile::ruff-changed`
 
 ## Naming
 

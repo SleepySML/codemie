@@ -4,7 +4,7 @@
 
 ## Overview
 
-Logging context (request UUID, user id, conversation id, email) lives in ContextVars set by `set_logging_info`; the request middleware sets the UUID from `X-Request-ID` and `authenticate` adds the user. Work forked into another thread or task carries the context through `copy_logging_context` and `restore_logging_context`.
+Logging context (request UUID, user id, conversation id, username) lives in ContextVars set by `set_logging_info`; the request middleware sets the UUID from `X-Request-ID` and `authenticate` adds the user. Work forked into another thread or task carries the context through `copy_logging_context` and `restore_logging_context`.
 
 | Part | What it holds | Start here |
 |---|---|---|
@@ -17,7 +17,7 @@ Logging context (request UUID, user id, conversation id, email) lives in Context
 ### Rules
 - R1. Log operation, ids and status with sanitized detail, never tokens or raw auth headers; request and user context come from `set_logging_info`. Evidence: `src/codemie/configs/logger.py::set_logging_info`
 - R2. Give a security failure (token, signature) its own metric `error_cause`, separate from benign filtering, which the GitLab path reports as a success metric with `filtered_action`. Evidence: `src/codemie/triggers/bindings/webhook.py::WebhookService._verify_gitlab_token`
-- R3. Log expected client errors at warning and server failures at error with the stack, as the `ExtendedHTTPException` handler does. Evidence: `src/codemie/rest_api/main.py::extended_http_exception_handler`
+- R3. Log expected client errors at warning and server failures at error with the stack, as the `ExtendedHTTPException` handler does; raise a 5xx that reports a known deployment state (e.g. a feature not configured) with `expected=True` so it logs as a warning without a traceback. Evidence: `src/codemie/rest_api/main.py::extended_http_exception_handler`
 
 ## Examples
 
@@ -35,7 +35,7 @@ def restore_logging_context(snapshot: LoggingContextSnapshot) -> None:
         uuid=snapshot["uuid"],
         user_id=snapshot["user_id"],
         conversation_id=snapshot["conversation_id"],
-        user_email=snapshot["user_email"],
+        username=snapshot["username"],
     )
 ```
 

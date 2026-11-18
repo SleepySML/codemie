@@ -18,6 +18,8 @@
 ### Rules
 - R1. Extend or configure `AIToolsAgent` and its callback factory instead of a parallel agent runtime for one feature. Evidence: `src/codemie/agents/assistant_agent.py::AIToolsAgent`
 - R2. Return agent output through `TaskResult.from_agent_response`, which serializes dict and model results to JSON strings and keeps `intermediate_steps`. Evidence: `src/codemie/agents/assistant_agent.py::TaskResult.from_agent_response`
+- R3. Build a LangGraph ReAct agent or supervisor with `post_model_hook` from `LangGraphAgent._guarded_post_model_hook` (or `post_model_hook_factory` on `create_smart_react_agent`) and `state_schema=confirmation_state_schema(response_format)`, so the tool-call confirmation gate runs and its call identities survive the state reducer. Evidence: `src/codemie/agents/tool_confirmation/call_identity.py::confirmation_state_schema`
+- R4. In a graph node that invokes a nested agent inside `try/except Exception`, re-raise `langgraph.errors.GraphBubbleUp` first (the confirmation gate's `interrupt()` must reach the parent graph, not be logged as a failure). Evidence: `src/codemie/agents/smart_react_agent.py::_execute_agent_with_selected_tools`
 
 ## Examples
 

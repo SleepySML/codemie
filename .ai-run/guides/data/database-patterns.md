@@ -32,10 +32,21 @@ PostgreSQL access goes through SQLModel models on `BaseModelWithSQLSupport` and 
 - R1. Define a table as a SQLModel class on `BaseModelWithSQLSupport` with `table=True`; it brings a string `id` primary key (a UUID4 on `save`), `date` and `update_date`. Evidence: `src/codemie/rest_api/models/base.py::CommonBaseModel`
 - R2. Store a nested Pydantic value in a JSON column through `PydanticType` or `PydanticListType`. Evidence: `src/codemie/rest_api/models/base.py::PydanticType`
 
+### Constraints
+| Do not | Do instead | Why | Evidence |
+|---|---|---|---|
+| Do not add a column holding a `users.id` without a foreign key (plain `user_id`/`created_by`, or a `CreatedByUser`/`UserEntity` JSONB column) without registering it | add it to the matching `_PLAIN_ID_COLUMNS`, `_CREATED_BY_JSONB_COLUMNS` or `_USER_ENTITY_JSONB_COLUMNS` tuple in `user_remap_service.py`; only real FKs to `users.id` are found from `pg_constraint` | the user id remap iterates the fixed tuples, so an unlisted column keeps the old id and nothing signals it | `src/codemie/service/user/user_remap_service.py::UserRemapService._update_plain_id_columns` |
+
 ## Queries
 
 ### Rules
 - R1. Filter with `get_by_fields` or `get_all_by_fields`; a dotted key such as `created_by.name` becomes a JSON path through `get_field_expression`. Evidence: `src/codemie/rest_api/models/base.py::BaseModelWithSQLSupport.get_field_expression`
+- R2. Build a SQL substring search with `search_ranking(text, *columns)`, which escapes LIKE wildcards and returns `(condition, rank)`; filter by the condition and put the rank first in ORDER BY when a search term is given. Evidence: `src/codemie/core/search_ranking.py::search_ranking`
+
+### Constraints
+| Do not | Do instead | Why | Evidence |
+|---|---|---|---|
+| Do not compare an `sa.Enum` column with a literal string such as `"assistant"` | compare with the enum member (`Permission.resource_type == ResourceType.ASSISTANT`), as `Permission.get_for` does; the PostgreSQL labels are the member names (`ASSISTANT`), not the Python values | a lowercase literal matches no row, so the filter silently returns nothing | `src/codemie/rest_api/models/permission.py::Permission.get_for` |
 
 ## Transactions
 
@@ -43,11 +54,16 @@ PostgreSQL access goes through SQLModel models on `BaseModelWithSQLSupport` and 
 - R1. Wrap writes that must commit together in `transactional_session()`; `save()` and `update()` join it through `get_session`, and it rolls back when the block raises. Evidence: `src/codemie/clients/postgres.py::transactional_session`
 - R2. Delete inside a `transactional_session` through the session the block yields; `BaseModelWithSQLSupport.delete()` opens its own session and commits at once. Evidence: `src/codemie/rest_api/models/base.py::BaseModelWithSQLSupport.delete`
 
+### Constraints
+| Do not | Do instead | Why | Evidence |
+|---|---|---|---|
+| Do not copy `src/codemie/service/project/project_assignment_service.py::ProjectAssignmentService.assign_user_to_project` (check-then-insert with no `IntegrityError` handling) | insert and map the unique violation to 409, as `src/codemie/service/cost_center_service.py::CostCenterService.create` does | two concurrent requests both pass the existence check and the loser answers 500 | `src/codemie/service/cost_center_service.py::CostCenterService.create` |
+
 ## Migrations and seeds
 
 ### Rules
-- R1. Add a revision under `src/external/alembic/versions/` and check for a second head before writing and before merging (startup upgrades to `head`, which fails with more than one head). Evidence: `src/codemie/clients/postgres.py::alembic_upgrade_postgres`
-- R2. Change a PostgreSQL enum with `op.sync_enum_values`, listing the full member set in upgrade and downgrade. Evidence: `src/external/alembic/versions/8b2c1a4d5e6f_add_ms_teams_credential_type.py::upgrade`
+- R1. Add a revision under `src/external/alembic/versions/` and check heads with `make check-alembic` (it merges in origin/main's versions; the pre-push hook and the MR pipeline run the same script) before merging, since startup upgrades to `head`, which fails with more than one head. Evidence: `Makefile::check-alembic`, `src/codemie/clients/postgres.py::alembic_upgrade_postgres`
+- R2. Change a PostgreSQL enum with `op.sync_enum_values`, listing the full member set in upgrade and downgrade; to only add a value to an enum other branches also extend (e.g. `codemie.resourcetype`), run `ALTER TYPE ... ADD VALUE IF NOT EXISTS` inside `op.get_context().autocommit_block()` (a synced fixed list would drop values another branch added). Evidence: `src/external/alembic/versions/8b2c1a4d5e6f_add_ms_teams_credential_type.py::upgrade`, `src/external/alembic/versions/f8d24a6c0b17_platform_sharing_grants_and_links.py::upgrade`
 - R3. Put CLI analytics schema changes in the separate tree `src/external/alembic_cli_analytics/`. Evidence: `src/external/alembic_cli_analytics/env.py::context.configure`
 
 ## Safety

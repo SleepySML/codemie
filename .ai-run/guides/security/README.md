@@ -15,11 +15,11 @@ Security fixes in this repository land in `pyproject.toml`/`poetry.lock` for Pyt
 ## Vulnerability remediation
 
 ### Rules
-- R1. Expect `git commit` to run the staged Ruff check, `ruff check`, the license check and the container gitleaks scan; tests and `make sonar-local` run at `git push` when `CODEMIE_PREPUSH_ENABLED` is on, and `CODEMIE_PRECOMMIT_ENABLED=false` skips the gitleaks hook alone. Evidence: `scripts/git-hooks/pre_commit.sh::LICENSE_CMD`, `scripts/git-hooks/pre_push.sh::CODEMIE_PREPUSH_ENABLED`, `scripts/git-hooks/validate_secrets.sh::CODEMIE_PRECOMMIT_ENABLED`
-- R2. Ask a reviewer in the MR description to post `/sanity`: `.gitlab-ci.yml` runs only a `pre-ci-guard` stage on MR pipelines and none of its jobs runs a Makefile gate. Evidence: `.gitlab-ci.yml::wait-ci-init`
+- R1. Expect `git commit` to run the staged Ruff check, `ruff check`, the license check and the container gitleaks scan; `git push` always runs the Alembic heads check (`scripts/check_alembic_heads.py`, `--merge-with origin/main` when that ref exists) and blocks the push on two or more heads or with no working python3/python, while tests and `make sonar-local` run only when `CODEMIE_PREPUSH_ENABLED` is on; `CODEMIE_PRECOMMIT_ENABLED=false` skips the gitleaks hook alone. Evidence: `scripts/git-hooks/pre_commit.sh::LICENSE_CMD`, `scripts/git-hooks/pre_push.sh::ALEMBIC_CHECK_CMD`, `scripts/git-hooks/pre_push.sh::CODEMIE_PREPUSH_ENABLED`, `scripts/git-hooks/validate_secrets.sh::CODEMIE_PRECOMMIT_ENABLED`; test `tests/scripts/test_pre_push_hook.py`
+- R2. Ask a reviewer in the MR description to post `/sanity`: the MR pipeline runs only the `pre-ci-guard` stage (`wait-ci-init` and the Alembic heads check), and none of its jobs runs tests. Evidence: `.gitlab-ci.yml::wait-ci-init`, `.gitlab-ci.yml::check-alembic-heads`
 - R3. Fix a Python package in `pyproject.toml` and the lock, not as an image-level override, and an OS package in the base image; mark the pin with `# Security (EPMCDME-...)` naming the CVEs. Evidence: `pyproject.toml::datasets`
 - R4. Derive gate lists, pins and manifests by command (`grep -n '^verify:' Makefile`, `git log --grep=CVE`) instead of a copied list. Evidence: `Makefile::verify`
-- R5. After a manifest change run `poetry check --lock`, then `make verify`; a change reaching enterprise code is tested against the GitLab clone of the enterprise package. Evidence: `Makefile::verify`
+- R5. After a manifest change run `make check-deps` (fix a mismatch with `poetry lock`), then `make verify`; a change reaching enterprise code is tested against the GitLab clone of the enterprise package. Evidence: `Makefile::check-deps`, `Makefile::verify`
 - R6. Hand a committed secret to a human for rotation; scrubbing the tree leaves the secret in history. `make verify` includes `make gitleaks`. Evidence: `Makefile::gitleaks`
 
 ## Quick reference
