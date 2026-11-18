@@ -18,6 +18,14 @@ Settings are fields of the pydantic `Config` in `src/codemie/configs/config.py`,
 - R1. Add a setting as a typed field of `Config` and read it from `config`; values come from the environment, then `.env.local`, then `.env`. Evidence: `src/codemie/configs/config.py::load_env_files`
 - R2. Check a feature flag where the app, router or service is assembled, and reach enterprise features through the enterprise loaders, not by assuming the package. Evidence: `src/codemie/rest_api/main.py::ENABLE_USER_MANAGEMENT`
 - R3. Read a runtime-togglable flag such as chat contextual naming through `DynamicConfigService` with a safe default; on a naming failure or with the flag off the conversation keeps its truncated first-message name. Evidence: `src/codemie/service/chat_naming_service.py::_is_chat_contextual_naming_enabled`
+- R4. Gate a feature whose backend is optional in standalone with an availability function of `cfg` that returns the existing answer unchanged when `STANDALONE` is false and checks only settings (no network call), as `retrieval_available` does; when the UI must hide the feature, publish the result as a runtime component in `CustomerConfig._get_runtime_config`. Evidence: `src/codemie/configs/config.py::mcp_connect_available`
+- R5. Gate MCP tool loading on `mcp_connect_available(config)`, not `config.MCP_CONNECT_ENABLED`: in standalone it also needs `MCP_CONNECT_URL`, and without it `ToolkitService._get_tools` logs a warning and loads no MCP tools for an assistant with MCP servers. Evidence: `src/codemie/service/tools/toolkit_service.py::ToolkitService._get_tools`
+- R6. Gate a new `customer_config` feature that several routers and a service expose through one shared gate module: an `ensure_<feature>_enabled()` raising 403 for service chokepoints and a router dependency list with `authenticate` first, so an unauthenticated caller gets 401, not 403. Older features (`subWorkflow`, `cliAnalytics`, `costCenters`) still check `customer_config.is_feature_enabled` inline per call site. Evidence: `src/codemie/service/budget/feature_gate.py::ensure_budget_management_enabled`
+
+### Constraints
+| Do not | Do instead | Why | Evidence |
+|---|---|---|---|
+| Do not call a feature gate after an early return, or only in one router when another path serves the same feature | Do instead call it first in the service chokepoint, before any return, as `get_cost_center_budget_summary` calls `ensure_budget_management_enabled` | the empty-input path and the other entry points served the feature with the flag off | `src/codemie/service/budget/cost_center_budget_summary.py::get_cost_center_budget_summary` |
 
 ## Examples
 

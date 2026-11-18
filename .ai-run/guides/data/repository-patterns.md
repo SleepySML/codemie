@@ -4,19 +4,21 @@
 
 ## Overview
 
-Repositories under `src/codemie/repository/` own storage access: Elasticsearch repositories subclass `BaseElasticRepository`, file storage is chosen by `FileRepositoryFactory` from `FILES_STORAGE_TYPE`, and the filesystem is the default.
+Repositories under `src/codemie/repository/` own storage access: Elasticsearch repositories subclass `BaseElasticRepository`, general file storage is chosen by `FileRepositoryFactory` from `FILES_STORAGE_TYPE`, and the filesystem is the default; hosted application storage is opened separately by `open_hosted_storage`.
 
 | Part | What it holds | Start here |
 |---|---|---|
 | `src/codemie/repository/base_elastic_repository.py` | Elasticsearch repository base | `src/codemie/repository/base_elastic_repository.py::BaseElasticRepository` |
 | `src/codemie/repository/repository_factory.py` | file storage selection | `src/codemie/repository/repository_factory.py::FileRepositoryFactory` |
 | `src/codemie/repository/cli_analytics/` | CLI analytics storage ports and PostgreSQL implementation | `src/codemie/repository/cli_analytics/ports.py::IngestGate` |
+| `src/codemie/repository/hosted_applications/` | hosted application storage (private volume or dedicated bucket) | `src/codemie/repository/hosted_applications/factory.py::open_hosted_storage` |
 
 ## Repositories
 
 ### Rules
 - R1. Extend the matching repository for storage access and return project entities or models, not provider responses. Evidence: `src/codemie/repository/base_elastic_repository.py::BaseElasticRepository`
 - R2. Get file storage from `FileRepositoryFactory.get_current_repository` (chosen by `FILES_STORAGE_TYPE`, filesystem by default) instead of branching on the provider in a service. Evidence: `src/codemie/repository/repository_factory.py::FileRepositoryFactory.get_current_repository`
+- R3. Open hosted application storage with `open_hosted_storage` (filesystem, aws or gcp from `FILES_STORAGE_TYPE`; private volume `HOSTED_APPS_STORAGE_DIR` or dedicated bucket `HOSTED_APPS_STORAGE_BUCKET`), not `FileRepositoryFactory`; do not route hosted app bytes through the general file repositories. Evidence: `src/codemie/repository/hosted_applications/factory.py::open_hosted_storage`
 
 ## Examples
 

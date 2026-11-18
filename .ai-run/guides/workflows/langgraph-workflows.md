@@ -24,6 +24,7 @@
 ### Rules
 - R1. Extend `WorkflowExecutor` (graph build, transitions, validation) instead of a separate graph execution path; autonomous mode runs on `SupervisorWorkflowExecutor`. Evidence: `src/codemie/workflows/workflow.py::WorkflowExecutor.validate_workflow`
 - R2. Add node behaviour as a `BaseNode` subclass implementing `execute` and `get_task`, and route transitions through the executor's transition handlers. Evidence: `src/codemie/workflows/nodes/base_node.py::BaseNode.execute`
+- R3. Do not put `next.iter_key` in the same next block as `condition` or `switch` (the execution config schema rejects it); instead route the condition to a no-LLM dispatch state, a `transform_node` custom node extracting the list from `context_store`, whose next holds `state_id` plus `iter_key`. Evidence: `src/codemie/workflows/execution_config_schema.yaml::iter_key`, `config/templates/workflow/aice_java_migration_template.yaml::files-dispatcher`
 
 ## Quick reference
 

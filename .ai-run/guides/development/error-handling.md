@@ -21,7 +21,7 @@ Typed exceptions live in `src/codemie/core/exceptions.py`; `main.py` maps `Valid
 ## Errors
 
 ### Rules
-- R1. Raise `ValidationException` (400), `NotFoundException` (404) or `ExtendedHTTPException` for user-facing errors; a bare `ValueError` reaches the client as a 500. Evidence: `src/codemie/rest_api/main.py::domain_validation_exception_handler`
+- R1. Raise `ValidationException` (400), `NotFoundException` (404) or `ExtendedHTTPException` for user-facing errors; a bare `ValueError` raised in a service or route reaches the client as a 500 (one raised inside a request-model `field_validator` becomes a 422 through `validation_exception_handler`). Evidence: `src/codemie/rest_api/main.py::domain_validation_exception_handler`
 - R2. Log the exception type and detail server-side and return a fixed message, as `authenticate` does for unexpected errors. Evidence: `src/codemie/rest_api/security/authentication.py::authenticate`
 - R3. Give each failure mode its own message or metric cause instead of one shared message, and check a value before interpolating it into a message. Evidence: `src/codemie/triggers/bindings/webhook.py::WebhookService.invoke_webhook_logic`
 

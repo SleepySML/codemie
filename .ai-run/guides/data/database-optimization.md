@@ -17,6 +17,11 @@ List endpoints and repositories bound their reads: Elasticsearch reads pass `siz
 - R1. Page list reads (`page`, `per_page`) and read many rows with `get_by_ids` instead of a loop of single reads. Evidence: `src/codemie/rest_api/models/base.py::BaseModelWithSQLSupport.get_by_ids`
 - R2. Pass an explicit `limit` to `BaseElasticRepository.get_all`; without it the search size is 10000 and hits that fail `to_entity` are skipped with a warning. Evidence: `src/codemie/repository/base_elastic_repository.py::BaseElasticRepository.get_all`
 
+### Read first
+| When you are | Exemplar | Why this one | Tests |
+|---|---|---|---|
+| reading many rows by id on an async session | `src/codemie/repository/user_repository.py::UserRepository.aget_users_by_ids` | one `IN` read per `MAX_POSTGRES_QUERY_ARGUMENTS` chunk, returns an id-keyed dict, skips non-UUID ids | `tests/codemie/repository/test_user_repository_crud.py::TestUserRepositoryAsyncGetUsersByIds` |
+
 ## Quick reference
 
 | Task | Do | Where |

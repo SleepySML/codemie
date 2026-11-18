@@ -15,6 +15,7 @@
 
 ### Rules
 - R1. Change Confluence ingestion in `ConfluenceDatasourceProcessor` and its loader; keep the CQL search following the `_links.next` URL (EPMCDME-14246 fixed an endless loop there). Evidence: `src/codemie/datasource/loader/confluence_loader.py::ConfluenceDatasourceLoader._search_content_by_cql`
+- R2. Skip a page whose content returns 404 in `process_pages`, count it in `get_load_stats` under `FAILED_DOCUMENTS_KEY`, and let a 403 or any other error abort the run. Do not retry it: a 404 is not transient. Evidence: `src/codemie/datasource/loader/confluence_loader.py::ConfluenceDatasourceLoader.process_pages`
 
 ## Examples
 

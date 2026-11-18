@@ -21,6 +21,7 @@ A hedged assistant races its LLM run against hedge tools: `get_request_handler` 
 - R4. Accept a provider fast-path result through `result_condition` (a boolean expression over the result; unset accepts any non-null result). Evidence: `src/codemie/rest_api/models/hedging.py::HedgingProviderToolDetails`
 - R5. Map tool inputs with `input_mapping` Jinja2 templates; forward `{{user.token}}` to trusted internal providers only. Evidence: `src/codemie/rest_api/models/hedging.py::HedgingConfig`
 - R6. List hedgeable tools through `get_hedgeable_tools_info`. Evidence: `src/codemie/service/tools/tools_info_service.py::get_hedgeable_tools_info`
+- R7. Expect no hedging when the built agent tree requires tool confirmation (`tree_requires_confirmation`): the hedged handler drops its build and runs the standard stream, so pause and resume work as for a standard assistant. Evidence: `src/codemie/rest_api/handlers/hedged_handler.py::HedgedAssistantHandler._handle_stream`
 
 ## Examples
 

@@ -14,8 +14,8 @@ Python dependencies are pinned in `pyproject.toml` (Poetry, Python 3.12-3.13) wi
 ## Dependencies
 
 ### Rules
-- R1. Locate the manifest a package lives on first (`git ls-files '*pyproject.toml' '*requirements*.txt' '*.lock'`); this repository resolves Python through Poetry alone. Evidence: `pyproject.toml::tool.poetry.dependencies`
-- R2. Bump a direct dependency with `poetry update`, force a transitive one by adding a constraint, and keep the lock in step (`poetry check --lock`). Evidence: `pyproject.toml::tool.poetry.dependencies`
+- R1. Locate the manifest a package lives on first (`git ls-files '*pyproject.toml' '*requirements*.txt' '*.lock'`); Python resolves through Poetry, plus `hosted-applications/requirements-validator.txt`, a hash-pinned copy of `poetry.lock` versions for the validator image: when starlette, uvicorn or their dependencies move in `poetry.lock`, regenerate it in the same change. Evidence: `pyproject.toml::tool.poetry.dependencies`, `hosted-applications/requirements-validator.txt::starlette`
+- R2. Bump a direct dependency with `poetry update`, force a transitive one by adding a constraint, and keep the lock in step: after a `pyproject.toml` edit run `make check-deps` (exit 1 = stale or missing lock, fix with `poetry lock`; exit 2 = Poetry not found). Evidence: `scripts/check_poetry_lock.py::check`, `Makefile::check-deps`
 - R3. Admit a dependency only when its licence is in `allow-only` under `tool.pip-licenses` or a named exception; a new package needs review, not just a bump. Evidence: `pyproject.toml::tool.pip-licenses`
 - R4. Resolve `codemie-enterprise` from the private source in `tool.poetry.source`; it is the optional `enterprise` extra. Evidence: `pyproject.toml::tool.poetry.extras`
 - R5. Validate a fix that reaches `codemie_enterprise` against an editable install of its GitLab clone, then undo the install. Evidence: `Makefile::install-enterprise`

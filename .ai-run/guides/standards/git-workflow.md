@@ -15,6 +15,11 @@ Evidence: README.md § Development Workflow and CONTRIBUTING.md § How to Contri
 ## Commit Message Format
 
 Use `EPMCDME-####: Description` for repository commits.
+
+```
+EPMCDME-<number>: <Description>
+```
+
 Examples: `EPMCDME-16609: Show request cost, cache writes and tool success in CLI Session Detail (with EPMCDME-16741)`, `EPMCDME-14855: Fix agent streaming truncation, tool-error cap, redaction and A2A timeout`, `EPMCDME-13429: Record the default budget assignment when an admin unassigns a custom budget`
 
 | Avoid | Prefer |
@@ -96,6 +101,12 @@ If response `notes[0].position` is `null` — position not resolved, fell back t
 ```bash
 glab api "projects/epm-cdme%2Fcodemie/merge_requests/<MR_ID>/notes/<NOTE_ID>" --method DELETE
 ```
+
+## Anti-Patterns
+
+| Do not | Do instead | Why |
+|---|---|---|
+| `git commit --no-verify` or `git push --no-verify` to get past a failing hook | Fix what the hook reports (reword the subject to `EPMCDME-<n>:`, stage the files `ruff` rewrote) and re-run the command | README.md § Git Hooks marks skipping as not recommended; `scripts/git-hooks/commit_msg.sh` exits 1 on a subject without the `EPMCDME-[0-9]+:` prefix, and the Alembic heads check the pre-push hook runs is repeated in the MR pipeline for MRs targeting `main` |
 
 ## Troubleshooting
 
