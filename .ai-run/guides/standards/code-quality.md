@@ -1,46 +1,56 @@
-# Code Quality
+# Code Quality Standards
 
-## Python Style
+**Project**: codemie · **Stack**: Python FastAPI · **Scope**: Ruff-enforced tooling, naming, typing, complexity, imports and module cohesion; gate commands are in `quality-gates.md`.
 
-Use the repo's Ruff configuration rather than local preference. The project config sets line length, selected lint rules, and per-file ignores in `pyproject.toml:177`.
+## Overview
 
-| Avoid | Prefer |
-|---|---|
-| Formatting by hand | Run the Ruff gate from `.ai-run/guides/quality-gates.md` |
-| Introducing a second formatter | Keep formatting aligned with `tool.ruff` |
+Ruff is the only linter and formatter: `make ruff` formats, applies safe fixes and checks; the pre-commit hook checks staged Python files and license headers. Rules are in `pyproject.toml` under `tool.ruff`.
 
-## Types And Imports
+| Part | What it holds | Start here |
+|---|---|---|
+| `pyproject.toml` | Ruff config | `pyproject.toml::tool.ruff` |
+| `scripts/git-hooks/` | pre-commit, commit-msg, pre-push hooks | `scripts/git-hooks/_ruff_staged.sh::changed_files` |
+| `scripts/license_headers/` | Apache header checker | `scripts/license_headers/check_license_headers.py::EXCLUDE_DIR_PREFIXES` |
 
-Keep modern Python type hints and first-party imports aligned with package names.
+## Enforced tooling
 
-| Avoid | Prefer |
-|---|---|
-| Untyped public functions in new code | Explicit parameter and return types |
-| `typing.Optional[X]` and bare `list`/`dict` annotations | `X \| None` unions and parameterized generics (`list[str]`, `dict[str, str]`); add `from __future__ import annotations` in new modules |
-| Leaving a duck-typed parameter unannotated | Spell out the accepted union (e.g. `bytes \| str \| dict[str, object]`) |
-| Treating generated or external code like normal source | Respect configured ignores for `src/external/*` and generated plugin code |
+### Rules
+- R1. Run the lint command `.ai-run/guides/quality-gates.md` names before committing, and `git add` the files it rewrites (the `codemie-pre-commit` hook fails when Ruff would change a staged file). Evidence: `.pre-commit-config.yaml::codemie-pre-commit`
+- R2. Give a new `.py` or `.sh` file the Apache 2.0 header; `make license-fix` adds it (the pre-commit hook runs the checker in `--check` mode). Evidence: `scripts/git-hooks/pre_commit.sh::LICENSE_CMD`
+- R3. Leave generated and external code (`src/external/*`, generated plugin code) to its configured ignores instead of editing it for style. Evidence: `pyproject.toml::tool.ruff.lint.per-file-ignores`
 
-Evidence: project packages are `codemie` and `codemie_tools` at `pyproject.toml:16`; Ruff first-party imports are configured at `pyproject.toml:209`.
+## Naming
 
-## License Headers
+### Rules
+- R1. Follow the pep8-naming rules Ruff selects (`N`); mixedCase class attributes (N815), an exception name without an `Error` suffix (N818) and a first argument other than `self` (N805) are permitted, not required. Evidence: `pyproject.toml::N818`
 
-Source files use the Apache 2.0 header checker.
+## Type safety
 
-| Avoid | Prefer |
-|---|---|
-| Adding new source files without headers | Run `make license-check` or `make license-fix` as appropriate |
-| Editing generated/external files just to satisfy style | Check the owning guide or existing ignore first |
+### Rules
+- R1. Write new annotations as `X | None` and parameterized generics (`list[str]`), and spell out the union a duck-typed parameter accepts. Evidence: `src/codemie/clients/postgres.py::PostgresClient.get_libpq_url`
+- R2. Annotate the parameters and return type of a new public function; no type checker runs in the gates, so annotations are checked in review. Evidence: `src/codemie/clients/postgres.py::PostgresClient.get_libpq_url`
 
-Evidence: Makefile license targets are defined at `Makefile:41`.
+## Complexity limits
 
-## Module Cohesion
+### Rules
+- R1. Keep a function's McCabe complexity at 16 or below (Ruff `C901` fails above `max-complexity = 16`); `kata_import_service.py` is the single file-level exception. Evidence: `pyproject.toml::max-complexity`
+- R2. Put a new concern in a new module next to its user; do not grow a file of about 500 lines with code outside its responsibility. Evidence: `src/codemie/rest_api/models/base.py::BaseModelWithSQLSupport`
 
-Code goes into the module that owns its concern. A new concern does not go into an existing file just because the file is nearby.
+## Imports
 
-| Avoid | Prefer |
-|---|---|
-| Appending a new concern (its own constants, pure functions and tests) to an existing module | A new module next to the code that uses it, imported by the existing one |
-| Adding to a file of about 500 lines or more when the change is not that file's core responsibility | Extract the new piece first, then wire it in |
-| Adding code where the piece cannot be named | Name the piece in one noun; if it has a name, it is a module |
+### Rules
+- R1. Leave the order of import lines you do not touch: Ruff's isort rules (`I`) are not selected, so `known-first-party` sorts nothing and a reorder adds diff noise. Evidence: `pyproject.toml::known-first-party`
 
-Evidence: the workspace script bridge added timeout handling, channel lifecycle and limit clamping to large service and runner modules, and each was later moved into its own module without changing behavior (`workspace_script_bridge.py`, `job_bridge.py`, `tool_calling_limits.py`).
+## Common pitfalls
+
+| Symptom | Cause | Fix | Evidence |
+|---|---|---|---|
+| The commit is rejected with "Ruff would change the following staged files" | the hook formats the staged blob and fails when the result differs | run `make ruff`, `git add` the files and commit again | `scripts/git-hooks/_ruff_staged.sh::changed_files` |
+
+## Quick reference
+
+| Task | Do | Where |
+|---|---|---|
+| Format and fix | `make ruff` | `Makefile::ruff` |
+| Add missing license headers | `make license-fix` | `Makefile::license-fix` |
+| Exclude a path from license checks | add it to `EXCLUDE_DIR_PREFIXES` | `scripts/license_headers/check_license_headers.py::EXCLUDE_DIR_PREFIXES` |

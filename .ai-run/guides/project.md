@@ -4,9 +4,9 @@
 
 | Field | Value | Source |
 |---|---|---|
-| Project name | CodeMie backend | README.md:19 |
-| Repository/package | codemie | pyproject.toml:1 |
-| Project code/key | EPMCDME | README.md:162 |
+| Project name | codemie | pyproject.toml::name |
+| Repository/package | codemie | README.md::codemie |
+| Project code/key | EPMCDME | scripts/git-hooks/commit_msg.sh::EPMCDME |
 
 ## Work Item Tracker
 
@@ -20,10 +20,12 @@
 ## Ticket Adapter
 
 **Status**: configured
-**Adapter**: `codemie-jira-assistant` skill — invoke via the `Skill` tool with the approved story content or file path as the argument. Do not hardcode the underlying command or assistant ID.
-**Lookup**: Invoke the `codemie-jira-assistant` skill with the ticket key or URL and request summary, description, acceptance criteria, status, assignee, issue type, and relevant links.
-**Create**: Invoke the `codemie-jira-assistant` skill with the complete ticket payload or the approved story file attached. Do not use conversational references such as "as drafted" unless the full final payload is included.
-**Output**: Jira ticket key and URL.
+**Adapter**: Invoke the `codemie-jira-assistant` skill via the Skill tool.
+**Lookup**: Invoke the `codemie-jira-assistant` skill with the ticket key and a request for summary, description, acceptance criteria, and links.
+**Create**: Invoke the `codemie-jira-assistant` skill with the complete ticket payload or approved story file as the argument.
+**Output**: Jira ticket key (EPMCDME-<n>) and URL returned by the skill
+**Comment**: Invoke the `codemie-jira-assistant` skill with a request to add a comment to the ticket, passing the comment body as the argument.
+**Attach**: Invoke the `codemie-jira-assistant` skill with a request to attach the file at {{FILE_PATH}} to ticket {{ID}} under the name `sdlc-<kind>-<filename>`.
 
 ## Source Control And Review
 
@@ -37,8 +39,8 @@
 ## MR Adapter
 
 **Status**: configured
-**Adapter**: GitLab CLI (`glab`) via project MR skills
-**Instructions**: Use `.ai-run/guides/standards/git-workflow.md` for branch, commit, push, and MR rules before creating review artifacts.
+**Adapter**: glab (GitLab CLI)
+**Instructions**: Branch, commit, push and MR rules from .ai-run/guides/standards/git-workflow.md; MR description from .gitlab/merge_request_templates/Default.md
 
 ## Complexity Scoring
 

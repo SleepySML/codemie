@@ -1,23 +1,26 @@
 # Database Optimization
 
-## Pagination And Batching
+**Project**: codemie · **Stack**: Python FastAPI · **Scope**: Pagination, batching and search size limits; sessions and transactions are in `data/database-patterns.md`.
 
-Avoid loading unbounded data unless the existing API contract explicitly requires it.
+## Overview
 
-| Avoid | Prefer |
-|---|---|
-| Fetching all rows for list endpoints | Pagination, limit parameters, or batch queries |
-| Repeated per-item repository calls | Bulk queries when the repository supports them |
+List endpoints and repositories bound their reads: Elasticsearch reads pass `size`, and SQL list helpers page with `page` and `per_page`.
 
-Evidence: recent history includes batching work for users list retrieval; repository tests cover bulk filtering under `tests/codemie/repository/test_user_project_repository_bulk_filter.py`.
+| Part | What it holds | Start here |
+|---|---|---|
+| `src/codemie/repository/base_elastic_repository.py` | search size handling | `src/codemie/repository/base_elastic_repository.py::BaseElasticRepository.get_all` |
+| `src/codemie/repository/ai_kata_repository.py` | paged SQL reads | `src/codemie/repository/ai_kata_repository.py::get_all_published` |
 
-## Search Limits
+## Bounded reads
 
-Elasticsearch queries should use explicit sizes and narrowly scoped query bodies.
+### Rules
+- R1. Page list reads (`page`, `per_page`) and read many rows with `get_by_ids` instead of a loop of single reads. Evidence: `src/codemie/rest_api/models/base.py::BaseModelWithSQLSupport.get_by_ids`
+- R2. Pass an explicit `limit` to `BaseElasticRepository.get_all`; without it the search size is 10000 and hits that fail `to_entity` are skipped with a warning. Evidence: `src/codemie/repository/base_elastic_repository.py::BaseElasticRepository.get_all`
 
-| Avoid | Prefer |
-|---|---|
-| Unbounded search defaults | Explicit `size` or limit handling |
-| Post-filtering large search results in Python | Push filters into the query where possible |
+## Quick reference
 
-Evidence: `BaseElasticRepository.get_all` applies a limit-derived size at `src/codemie/repository/base_elastic_repository.py:34`.
+| Task | Do | Where |
+|---|---|---|
+| Bound an ES read | pass `limit` to `get_all` | `src/codemie/repository/base_elastic_repository.py::BaseElasticRepository.get_all` |
+| Page a SQL list | take `page` and `per_page` like the kata repository | `src/codemie/repository/ai_kata_repository.py::get_all_published` |
+| Read many rows by id | use `get_by_ids` instead of a loop of `get_by_id` | `src/codemie/rest_api/models/base.py::BaseModelWithSQLSupport.get_by_ids` |

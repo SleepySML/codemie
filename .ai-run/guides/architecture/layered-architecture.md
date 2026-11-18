@@ -1,34 +1,36 @@
 # Layered Architecture
 
-## API To Service To Repository
+**Project**: codemie · **Stack**: Python FastAPI · **Scope**: Router, service and repository layers and where startup wiring lives; package boundaries are in `architecture/project-structure.md`.
 
-Keep HTTP concerns in routers, business orchestration in services, and persistence in repositories.
+## Overview
 
-| Avoid | Prefer |
-|---|---|
-| Calling database code directly from routers | Delegate from `src/codemie/rest_api/routers/` to `src/codemie/service/` |
-| Returning HTTP response objects from repositories | Return domain/data objects and let upper layers format |
+The backend is a FastAPI app assembled in one module: it registers routers, middleware and exception handlers, and runs migrations and schedulers from its lifespan. Routers delegate to services under `src/codemie/service/`, and services reach PostgreSQL through SQLModel models and repositories or Elasticsearch through repository classes.
 
-Evidence: routers are registered from `src/codemie/rest_api/main.py:1030`; service files live under `src/codemie/service/assistant_service.py`; repositories live under `src/codemie/repository/application_repository.py`.
+| Part | What it holds | Start here |
+|---|---|---|
+| `src/codemie/rest_api/` | app assembly, routers, security dependencies | `src/codemie/rest_api/main.py::lifespan` |
+| `src/codemie/service/` | business services | `src/codemie/service/assistant_service.py::AssistantService` |
+| `src/codemie/repository/` | storage access for Elasticsearch, files and SQL aggregates | `src/codemie/repository/base_elastic_repository.py::BaseElasticRepository` |
+| `src/codemie/core/` | shared exceptions, models, thought queue | `src/codemie/core/exceptions.py::ExtendedHTTPException` |
+| `src/codemie/configs/` | settings object and logging setup | `src/codemie/configs/config.py::Config` |
 
-## Startup And Router Ownership
+## Layers
 
-Register API surfaces centrally and keep feature startup side effects explicit.
+### Rules
+- R1. Keep HTTP concerns in routers, orchestration in `src/codemie/service/`, and storage access in repositories or SQL models; repositories return data objects, not HTTP responses. Evidence: `src/codemie/service/assistant_service.py::AssistantService`
+- R2. Gate an optional router where the app is assembled in `main.py` (as `ENABLE_USER_MANAGEMENT` does), not inside the router module. Evidence: `src/codemie/rest_api/main.py::ENABLE_USER_MANAGEMENT`
+- R3. Use the shared exceptions in `codemie.core.exceptions` and settings from `config` instead of feature-local exception types or direct environment reads. Evidence: `src/codemie/core/exceptions.py::ValidationException`
 
-| Avoid | Prefer |
-|---|---|
-| Hidden route registration in service modules | Add routers through the main FastAPI app registration area |
-| Feature flags scattered across routers | Gate optional routers where the app is assembled |
+## Common pitfalls
 
-Evidence: the FastAPI app is created at `src/codemie/rest_api/main.py:1000`; optional user-management routers are gated at `src/codemie/rest_api/main.py:1092`.
+| Symptom | Cause | Fix | Evidence |
+|---|---|---|---|
+| A new user-management or ServiceNow route returns 404 | those routers are included only when `ENABLE_USER_MANAGEMENT` (and `SERVICENOW_INTEGRATION_ENABLED`) is on | enable the flag in the environment, or include the router outside the flag block when it is unconditional | `src/codemie/rest_api/main.py::SERVICENOW_INTEGRATION_ENABLED` |
 
-## Shared Core
+## Quick reference
 
-Put cross-cutting exceptions, constants, config, and utilities in core/config modules instead of feature packages.
-
-| Avoid | Prefer |
-|---|---|
-| Defining duplicate exception types per feature | Use shared exceptions from `codemie.core` |
-| Reading environment variables directly throughout code | Use config modules under `src/codemie/configs/` |
-
-Evidence: API exception handlers consume shared exceptions at `src/codemie/rest_api/main.py:1192`.
+| Task | Do | Where |
+|---|---|---|
+| Register a new router | import its module and add an `app.include_router` line in the registration area | `src/codemie/rest_api/main.py::include_router` |
+| Add a startup step | add a helper and call it from the lifespan | `src/codemie/rest_api/main.py::lifespan` |
+| Gate a router behind a feature flag | wrap its include in the config check where the app is assembled | `src/codemie/rest_api/main.py::register_marketplace_management_router` |

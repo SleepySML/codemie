@@ -1,23 +1,32 @@
-# Agent Tool Patterns
+# Agent Tools
 
-## Tool Ownership
+**Project**: codemie · **Stack**: Python FastAPI · **Scope**: Agent-facing tool ownership and schema compatibility; toolkit creation is in `agents/custom-tool-creation.md`.
 
-Put reusable tool integrations under `codemie_tools`; put agent runtime adapters under `codemie/agents/tools`.
+## Overview
 
-| Avoid | Prefer |
-|---|---|
-| Embedding provider API calls inside prompts or routers | Implement a tool or toolkit class |
-| Mixing platform tool schema logic with provider clients | Keep schema/adapters near `src/codemie/agents/tools/` |
+Agent-facing adapters live in `src/codemie/agents/tools/`; reusable integrations live in `src/codemie_tools/`. Tool JSON schemas are rewritten for Google Vertex AI by deep-copying and converting `integer` to `number` inside `anyOf`.
 
-Evidence: agent tools live under `src/codemie/agents/tools/`; reusable integrations live under `src/codemie_tools/`.
+| Part | What it holds | Start here |
+|---|---|---|
+| `src/codemie/agents/tools/` | agent tool adapters (kb, code, platform, skill, ide) | `src/codemie/agents/tools/schema_compatibility.py::transform_schema_for_gcp_compatibility` |
+| `src/codemie_tools/base/` | tool base class and registry | `src/codemie_tools/base/codemie_tool.py::CodeMieTool` |
 
-## Schema Compatibility
+## Agent tools
 
-Keep tool schemas compatible with LangChain/LangGraph expectations.
+### Rules
+- R1. Put reusable integrations in a `codemie_tools` toolkit and agent runtime adapters under `src/codemie/agents/tools/`; provider API calls stay out of prompts and routers. Evidence: `src/codemie/agents/tools/schema_compatibility.py::transform_schema_for_gcp_compatibility`
+- R2. Pass a tool schema through `transform_schema_for_gcp_compatibility` before Vertex AI sees it and cover a schema change in the schema compatibility tests (Vertex rejects `integer` inside `anyOf`). Evidence: `src/codemie/agents/tools/schema_compatibility.py::transform_schema_for_gcp_compatibility`
 
-| Avoid | Prefer |
-|---|---|
-| Returning complex unserialized Python objects | Return structured, serializable outputs |
-| Changing schema behavior without tests | Add focused tests under `tests/codemie/agents/tools/` |
+## Common pitfalls
 
-Evidence: schema compatibility code exists at `src/codemie/agents/tools/schema_compatibility.py`; tests exist under `tests/codemie/agents/tools/test_schema_compatibility.py`.
+| Symptom | Cause | Fix | Evidence |
+|---|---|---|---|
+| A tool schema works on OpenAI but Vertex AI rejects it | Vertex AI does not accept `integer` inside `anyOf` | run the schema through the GCP transform and cover it in its test module | `src/codemie/agents/tools/schema_compatibility.py::transform_schema_for_gcp_compatibility` |
+
+## Quick reference
+
+| Task | Do | Where |
+|---|---|---|
+| Make a schema Vertex-compatible | pass it through `transform_schema_for_gcp_compatibility` | `src/codemie/agents/tools/schema_compatibility.py::transform_schema_for_gcp_compatibility` |
+| Sanitize a tool response for Gemini | use `sanitize_tool_response_for_gcp` | `src/codemie/agents/tools/schema_compatibility.py::sanitize_tool_response_for_gcp` |
+| Test a schema change | extend the schema compatibility tests | `tests/codemie/agents/tools/test_schema_compatibility.py::TestTransformSchemaForGCPCompatibility` |

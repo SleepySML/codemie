@@ -1,34 +1,40 @@
 # MCP Integration
 
-## MCP Configuration
+**Project**: codemie · **Stack**: Python FastAPI · **Scope**: MCP configuration routers, toolkit and init timeouts; agent tool adapters are in `agents/agent-tools.md`.
 
-Keep MCP configuration and authentication behavior behind existing service and router modules.
+## Overview
 
-| Avoid | Prefer |
-|---|---|
-| Adding MCP auth logic to unrelated routers | Use MCP config/auth routers and services |
-| Treating MCP tools as static app code | Load/configure through existing MCP service boundaries |
+MCP servers become toolkits through `MCPToolkitFactory`; listing a server's tools waits at most `MCP_SERVER_INIT_TIMEOUT` and logs how to raise it. Config and auth routers are registered in `main.py`.
 
-Evidence: MCP config router is registered at `src/codemie/rest_api/main.py:695`; MCP auth router is included at `src/codemie/rest_api/main.py:713`.
+| Part | What it holds | Start here |
+|---|---|---|
+| `src/codemie/service/mcp/` | MCP client, toolkit factory, tools | `src/codemie/service/mcp/toolkit.py::MCPToolkitFactory` |
+| `src/codemie/configs/config.py` | MCP timeouts | `src/codemie/configs/config.py::MCP_SERVER_INIT_TIMEOUT` |
 
-## Slow-Start Troubleshooting
+## MCP
 
-If an MCP server reports 500 errors only on first connection (e.g. during `npx`/`uvx` dependency download), the initialization timeout is the most likely cause.
+### Rules
+- R1. Change MCP config and auth through the MCP routers and `src/codemie/service/mcp/`; tools come from `MCPToolkitFactory`. Evidence: `src/codemie/service/mcp/toolkit.py::MCPToolkitFactory.get_toolkit`
+- R2. Raise `MCP_SERVER_INIT_TIMEOUT` (seconds, CodeMie) and `MCP_CONNECT_INIT_TIMEOUT` (milliseconds, MCP-Connect) together when a server fails only on first start; the smaller budget wins. Evidence: `src/codemie/service/mcp/toolkit.py::MCPToolkitFactory._list_tools_with_init_timeout`
 
-| Variable | Service | Default | Unit | Purpose |
-|---|---|---|---|---|
-| `MCP_SERVER_INIT_TIMEOUT` | CodeMie | `300.0` | seconds | Backend guard — `create_toolkit` times out if server start exceeds this |
-| `MCP_CONNECT_INIT_TIMEOUT` | MCP-Connect | `30000` | **milliseconds** | Bridge-side guard around `session.initialize()` |
-| `MCP_CLIENT_TIMEOUT` | CodeMie | `300.0` | seconds | Per-invocation timeout for `tools/call` requests |
+## Examples
 
-The effective initialization budget is `min(MCP_SERVER_INIT_TIMEOUT, MCP_CONNECT_INIT_TIMEOUT / 1000)` — the smaller value wins. Raise **both** variables together. Example for a 120-second budget:
+### Bounding server start with a timeout
 
+Source: `src/codemie/service/mcp/toolkit.py::MCPToolkitFactory._list_tools_with_init_timeout`
+
+```python
+    async def _list_tools_with_init_timeout(
+        self,
+        server_config: MCPServerConfig,
+        execution_context: MCPExecutionContext | None,
+    ) -> list[MCPToolDefinition]:
 ```
-# CodeMie deployment
-MCP_SERVER_INIT_TIMEOUT=120
 
-# MCP-Connect deployment
-MCP_CONNECT_INIT_TIMEOUT=120000
-```
+## Quick reference
 
-The timeout applies to all transports (stdio, SSE, streamable-http) and both cached and single-use modes.
+| Task | Do | Where |
+|---|---|---|
+| Raise the server start budget | set `MCP_SERVER_INIT_TIMEOUT` (and the MCP-Connect side) | `src/codemie/configs/config.py::MCP_SERVER_INIT_TIMEOUT` |
+| Raise the per-call budget | set `MCP_CLIENT_TIMEOUT` | `src/codemie/configs/config.py::MCP_CLIENT_TIMEOUT` |
+| Build a toolkit for a server | call `get_toolkit` on the factory | `src/codemie/service/mcp/toolkit.py::MCPToolkitFactory.get_toolkit` |

@@ -1,42 +1,46 @@
-# API Testing Patterns
+# Testing API Patterns
 
-## Router Tests
+**Project**: codemie · **Stack**: Python FastAPI · **Scope**: Router tests and router contract guards; suite-wide test patterns are in `testing/testing-patterns.md`.
 
-Test API behavior through the router/client boundary when request validation, auth, or response shape matters.
+## Overview
 
-| Avoid | Prefer |
-|---|---|
-| Testing only service methods for endpoint response contracts | API tests for status codes and response bodies |
-| Repeating auth setup in every test | Reuse existing fixtures/helpers near API tests |
-| Patching a name on the router package, or where it is defined, when the endpoint module bound it with `from ... import` | Patch the module that looks the name up: the endpoint submodule, or `_common` only for names `_common` itself reads; `patch.object` on a class or singleton survives module moves |
+Router tests either call the endpoint function directly with patched collaborators, or build a `TestClient(app)` with `app.dependency_overrides[authenticate]`. The router guards rebuild `main.py` in a subprocess under `PROFILE_ENV` and compare the OpenAPI document and route order with committed baselines.
 
-Evidence: router tests live under `tests/codemie/rest_api/routers/` (a few under `tests/unit/routers/`); package router imported at `tests/codemie/rest_api/routers/test_projects_router.py:40`; submodule patch at `tests/codemie/rest_api/routers/test_assistant.py:62`; `_common` patch at `tests/codemie/rest_api/routers/test_projects_router.py:80`; `patch.object` on a repository class at `tests/codemie/rest_api/routers/test_projects_spending_wiring.py:90`.
-
-## Error Cases
-
-Include negative cases for validation and authorization changes.
-
-| Avoid | Prefer |
-|---|---|
-| Only testing happy paths for protected routes | Test unauthenticated/unauthorized behavior |
-| Asserting raw exception text | Assert structured error response fields |
-
-Evidence: app-level error response shape is defined at `src/codemie/rest_api/main.py:1192`.
-
-## Router Contract Guards
-
-`tests/codemie/rest_api/router_guards/` builds `main.py` in a subprocess under a fixed env profile and compares the result with committed baselines; the guards run under `make test`.
-
-| Guard | Fails when | Baseline |
+| Part | What it holds | Start here |
 |---|---|---|
-| `test_openapi_matches_baseline` | Any OpenAPI difference: path, operationId, tag, request or response schema, component | `baselines/openapi.json` |
-| `test_baseline_order_is_preserved` | A recorded overlapping route pair swaps order or loses a route; new overlapping pairs only warn | `baselines/route_precedence.json` |
+| `tests/codemie/rest_api/routers/` | router tests | `tests/codemie/rest_api/routers/test_conversation_metrics_access.py::client` |
+| `tests/codemie/rest_api/router_guards/` | OpenAPI and route-order guards | `tests/codemie/rest_api/router_guards/guarded_app.py::load_guarded_app_dump` |
 
-| Avoid | Prefer |
-|---|---|
-| Regenerating baselines to make a failing guard pass | Fix the code if the contract change was unintended; regenerate only after an intended, reviewed change and review the baseline diff in the MR |
-| Assuming a new flag-gated router is guarded | Add its flag to `PROFILE_ENV`, which switches on every conditional router except MCP auth |
+## API tests
 
-Regenerate: `poetry run python -m tests.codemie.rest_api.router_guards.regenerate_baselines`
+### Rules
+- R1. Patch a collaborator in the module that looks it up (the endpoint submodule, `_common` only for names `_common` reads); `patch.object` on a class survives module moves. Evidence: `tests/codemie/rest_api/routers/test_projects_router.py::TestProjectCreationEndpoint.test_create_project_calls_service_directly`
+- R2. Test unauthenticated and unauthorized calls for a protected route and assert the structured `error` body fields, not raw exception text. Evidence: `tests/codemie/rest_api/routers/test_conversation_metrics_access.py::test_the_route_requires_an_authenticated_caller`
+- R3. Fix the code when the OpenAPI or route-order guard fails on an unintended change; regenerate baselines with `regenerate_baselines` after a reviewed change, and add a new flag-gated router's flag to `PROFILE_ENV`. Evidence: `tests/codemie/rest_api/router_guards/guarded_app.py::PROFILE_ENV`
 
-Evidence: `tests/codemie/rest_api/router_guards/test_openapi_snapshot.py:31`; `tests/codemie/rest_api/router_guards/test_route_precedence.py:100`; profile at `tests/codemie/rest_api/router_guards/guarded_app.py:52`; command at `tests/codemie/rest_api/router_guards/regenerate_baselines.py:20`.
+## Examples
+
+### A TestClient fixture with an auth override
+
+Source: `tests/codemie/rest_api/routers/test_conversation_metrics_access.py::client`
+
+```python
+def client():
+    app.dependency_overrides[authenticate] = lambda: User(id="caller", name="Caller")
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+```
+
+## Common pitfalls
+
+| Symptom | Cause | Fix | Evidence |
+|---|---|---|---|
+| The OpenAPI guard fails after an unrelated-looking change | any change to a path, operationId, tag or schema changes the snapshot | fix the code if the change was unintended; else regenerate and review the baseline diff | `tests/codemie/rest_api/router_guards/test_openapi_snapshot.py::test_openapi_matches_baseline` |
+
+## Quick reference
+
+| Task | Do | Where |
+|---|---|---|
+| Authenticate in a TestClient test | override `authenticate` and clear overrides after | `tests/codemie/rest_api/routers/test_conversation_metrics_access.py::client` |
+| Regenerate guard baselines | run the regenerate module after a reviewed contract change | `tests/codemie/rest_api/router_guards/regenerate_baselines.py::main` |
+| Guard a flag-gated router | add its flag to `PROFILE_ENV` | `tests/codemie/rest_api/router_guards/guarded_app.py::PROFILE_ENV` |

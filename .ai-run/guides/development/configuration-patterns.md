@@ -1,36 +1,51 @@
 # Configuration Patterns
 
-## Central Config
+**Project**: codemie · **Stack**: Python FastAPI · **Scope**: Central config, feature flags and dynamic settings; secret handling is in `development/security-patterns.md`.
 
-Use `src/codemie/configs/` and existing YAML config trees for runtime settings.
+## Overview
 
-| Avoid | Prefer |
-|---|---|
-| Reading environment variables directly in feature code | Add or reuse central config values |
-| Hardcoding model provider choices | Use `MODELS_ENV` and provider config files |
+Settings are fields of the pydantic `Config` in `src/codemie/configs/config.py`, read from the process environment, `.env` and `.env.local`; `load_env_files` also fills `os.environ` for modules that read variables directly. Runtime-togglable values go through `DynamicConfigService`.
 
-Evidence: README describes `MODELS_ENV` and `config/llms/` provider files at `README.md:61`.
+| Part | What it holds | Start here |
+|---|---|---|
+| `src/codemie/configs/config.py` | settings object and env file loading | `src/codemie/configs/config.py::Config` |
+| `src/codemie/service/dynamic_config_service.py` | admin-editable runtime values | `src/codemie/service/dynamic_config_service.py::DynamicConfigService` |
+| `config/` | YAML trees: LLM providers, customer config, katas | `src/codemie/configs/config.py::MODELS_ENV` |
 
-## Feature Flags
+## Configuration
 
-Gate optional behavior through config at assembly points or service boundaries.
+### Rules
+- R1. Add a setting as a typed field of `Config` and read it from `config`; values come from the environment, then `.env.local`, then `.env`. Evidence: `src/codemie/configs/config.py::load_env_files`
+- R2. Check a feature flag where the app, router or service is assembled, and reach enterprise features through the enterprise loaders, not by assuming the package. Evidence: `src/codemie/rest_api/main.py::ENABLE_USER_MANAGEMENT`
+- R3. Read a runtime-togglable flag such as chat contextual naming through `DynamicConfigService` with a safe default; on a naming failure or with the flag off the conversation keeps its truncated first-message name. Evidence: `src/codemie/service/chat_naming_service.py::_is_chat_contextual_naming_enabled`
 
-| Avoid | Prefer |
-|---|---|
-| Scattered feature flag checks in unrelated modules | Centralize checks near app/router/service assembly |
-| Assuming enterprise features always exist | Use enterprise loader/provider abstractions |
+## Examples
 
-Evidence: user-management routers are gated by config in `src/codemie/rest_api/main.py:706`.
+### Env file precedence
 
-## Chat Contextual Naming
+Source: `src/codemie/configs/config.py::load_env_files`
 
-| Setting | Type | Default | Toggle mechanism |
+```python
+def load_env_files(root: Path) -> None:
+    """Populate os.environ from .env.local and .env without overriding what is already set.
+
+    Precedence: process environment > .env.local > .env. With override=False the first value set wins,
+    so .env.local is loaded before .env.
+    """
+    load_dotenv(root / ".env.local", override=False)
+    load_dotenv(root / ".env", override=False)
+```
+
+## Common pitfalls
+
+| Symptom | Cause | Fix | Evidence |
 |---|---|---|---|
-| `CHAT_CONTEXTUAL_NAMING_ENABLED` | bool | `False` | `DynamicConfigService.get_bool_value_safe`, runtime-togglable via admin REST API `PUT /v1/dynamic-config/CHAT_CONTEXTUAL_NAMING_ENABLED` — no code deploy |
-| `CHAT_CONTEXTUAL_NAMING_LLM_MODEL` | str | `"gpt-5-nano-2025-08-07"` | static `config.py` / env var only — requires restart/redeploy to change |
+| A value in `.env` is ignored | the process environment wins over `.env.local`, which wins over `.env` | unset the exported variable or move the value to `.env.local` | `src/codemie/configs/config.py::load_env_files` |
 
-On any failure (LLM error, timeout, empty output) or when the flag is off, the conversation keeps its legacy truncated-first-message name — no user-facing error, no API/frontend surface change.
+## Quick reference
 
-Known limitation: conversations created via `background_task=True` requests never get the LLM name — the naming task is scheduled from inside `_background_generate`, which itself runs in a separate thread-pool executor after the original request's `BackgroundTasks` object has already finished running, so the scheduled task is never invoked. They still fall back to the legacy name safely.
-
-Evidence: `src/codemie/service/chat_naming_service.py`, `src/codemie/service/conversation_service.py:236-243`.
+| Task | Do | Where |
+|---|---|---|
+| Add a setting | add a typed field with a default to `Config` | `src/codemie/configs/config.py::Config` |
+| Read a runtime flag safely | call `DynamicConfigService.get_bool_value_safe` with a default | `src/codemie/service/dynamic_config_service.py::DynamicConfigService.get_bool_value_safe` |
+| Override a value on one machine | put it in `.env.local` | `src/codemie/configs/config.py::load_env_files` |

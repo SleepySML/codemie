@@ -1,6 +1,7 @@
 # Git Workflow
 
 ## Branch Naming Convention
+- base branch: main
 
 Use ticket-first feature branches for project work.
 
@@ -9,18 +10,19 @@ Use ticket-first feature branches for project work.
 | `feature/random-description` when a Jira task exists | `EPMCDME-12345_short-description` |
 | Long or vague branch descriptions | Short kebab-case or snake-compatible summary after the ticket |
 
-Evidence: README quick reference defines `<TICKET-ID>_short-description` at `README.md:162`.
+Evidence: README.md § Development Workflow and CONTRIBUTING.md § How to Contribute name `<TICKET-ID>_short-description`; remote branches show both that form and `feature/epmcdme-<n>`, and no hook in `.pre-commit-config.yaml` checks the branch name.
 
 ## Commit Message Format
 
 Use `EPMCDME-####: Description` for repository commits.
+Examples: `EPMCDME-16609: Show request cost, cache writes and tool success in CLI Session Detail (with EPMCDME-16741)`, `EPMCDME-14855: Fix agent streaming truncation, tool-error cap, redaction and A2A timeout`, `EPMCDME-13429: Record the default budget assignment when an admin unassigns a custom budget`
 
 | Avoid | Prefer |
 |---|---|
 | `fix: update thing` | `EPMCDME-12345: Update thing` |
 | `EPMCDME-12345 update thing` | `EPMCDME-12345: Update thing` |
 
-Evidence: README defines `<TICKET-ID>: Short Description` at `README.md:163`; recent history uses `EPMCDME-11910: ...`, `EPMCDME-12359: ...`, and similar ticket-prefixed commits.
+Evidence: `scripts/git-hooks/commit_msg.sh` (the `codemie-commit-msg` hook) rejects a subject that does not match `^EPMCDME-[0-9]+:` and lets `Merge `, `Revert `, `fixup!`, `squash!` and `amend!` subjects through; `git log --oneline -200` shows that prefix on each subject.
 
 ## Merge Strategy
 
@@ -31,7 +33,7 @@ Default to squash merge for review artifacts unless the reviewer or maintainer a
 | Merging a noisy WIP commit stack | One reviewed squash commit with the Jira ticket prefix |
 | Changing merge strategy without review context | Follow the MR reviewer or maintainer instruction |
 
-Evidence: README requires at least one approval and green pipeline before review completion at `README.md:165`.
+Evidence: README.md § Development Workflow asks for at least one approval and a green CI pipeline; `git log --merges` on `main` is empty, so the history is linear. No repository setting in this checkout states the merge method.
 
 ## Git Side Effects
 
@@ -50,7 +52,7 @@ glab mr create \
   --yes
 ```
 
-Evidence: the current agent entrypoint requires explicit git operations at `AGENTS.md:82`.
+Evidence: user policy carried by the entrypoint's Git Operations rule; the MR command shape follows `.ai-run/guides/project.md` MR Adapter.
 
 ## MR Description
 

@@ -1,5 +1,66 @@
 # Quality Gates
 
+Run order is fastest-to-slowest.
+
+## Full runs
+
+| Command | Covers | Source |
+|---|---|---|
+| `make verify` | ruff (format, fix, check), license (fix then check), gitleaks (Docker), pytest tests/ | Makefile::verify |
+| `make coverage` | pytest tests/ with HTML coverage | Makefile::coverage |
+| `GitLab MR pipeline` | pre-ci-guard stage only: no-op for non-main targets; wait-ci-init waits for the ci-pipeline and compliance-report contexts on MRs into main; no Makefile gate | .gitlab-ci.yml |
+
+---
+
+### lint
+
+**Run**: `make ruff`
+**Side effects**: rewrites Python files in the working tree (format and safe fixes)
+**Pass**: the final `ruff check` exits 0
+**Fail**: the final `ruff check` exits non-zero with remaining violations, or format fails on a syntax error
+**Auto-fix**: make ruff
+**Notes**: Every language in a change should have a lint gate; non-Python gaps are tracked under EPMCDME-13739 (from the existing guide). The Claude Code Stop hook runs this target.
+
+### license-check
+
+**Run**: `make license-check`
+**Side effects**: none
+**Pass**: exit 0
+**Fail**: exit 1 (missing headers, missing or ineligible file argument, git error)
+**Auto-fix**: make license-fix
+
+### secret-scan
+
+**Run**: `make gitleaks`
+**Side effects**: pulls the gitleaks image
+**Pass**: gitleaks exits 0 (no leaks)
+**Fail**: gitleaks exits non-zero (leak found) or docker cannot run
+**Notes**: A Docker failure is an unrun check, not a clean scan (existing guide).
+
+### build
+
+**Run**: `make build`
+**Side effects**: writes dist/
+**Pass**: exit 0
+**Fail**: exit non-zero
+
+### test
+
+**Run**: `make test`
+**Side effects**: writes .pytest_cache; enterprise tests run unless --skip-enterprise
+**Pass**: pytest exits 0
+**Fail**: pytest exits non-zero (failure, collection or fixture error, missing plugin)
+**Skip if**: The user did not request tests and the active task policy says tests are explicit-only.
+**Notes**: Tests run only when the user asks (task policy). Live CLI Analytics tests skip under make test without TEST_LOCAL_PG_URL.
+
+### static-analysis
+
+**Run**: `make sonar-local`
+**Side effects**: runs the test suite, writes coverage.xml, uploads an analysis for the current branch
+**Pass**: sonar-scanner completes and the quality gate passes
+**Fail**: exit 1 when coverage generation, the scanner or the server quality gate fails
+**Skip if**: SONAR_TOKEN unset (exit 0)
+
 ## Gate Order
 
 Use Makefile targets when available; they are the command source of truth for this repo. List the current targets rather than trusting a copy here: `grep -nE '^[a-zA-Z_-]+:' Makefile`.
@@ -124,13 +185,13 @@ To run live checks against the changed behavior, follow `.ai-run/guides/testing/
 
 A gate here can fail for reasons unrelated to the change. The table is in
 [`security/README.md`](security/README.md#exit-codes-that-mislead) — `make gitleaks` needing Docker,
-the pre-commit hook running `make sonar-local`, and collection errors caused by a stale environment.
+the pre-push hook running `make sonar-local` when `CODEMIE_PREPUSH_ENABLED` is on, and collection errors caused by a stale environment.
 
 A gate that could not run is unverified, not passed.
 
 ## After merge
 
-No pipeline in this repository runs these gates:
+No job in `.gitlab-ci.yml` runs these gates: it holds a `pre-ci-guard` stage for merge request pipelines, whose `wait-ci-init` job (from the included `codemie-gitlab-templates` file) waits for the `ci-pipeline` and `compliance-report` contexts on MRs into `main`.
 
 ```bash
 ls .gitlab-ci.yml .github/workflows
@@ -142,5 +203,5 @@ Two mechanisms partly cover that gap, and neither executes a test:
   `## Test harness` block above. It checks text only.
 - The regression suite runs when a human posts `/sanity` on the MR.
 
-Whatever was not run locally was not run. The `/sanity` request wording is in
+What the external `ci-pipeline` context runs is not visible in this repository; report a gate not run locally as not run.
 [`security/README.md`](security/README.md) § Regression run.

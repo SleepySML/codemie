@@ -146,3 +146,10 @@ standalone/external-config/*
 
 # Default results folder of codemie-test-harness (junit.xml, results.json)
 codemie-test-reports/
+
+# AI
+.ai-run/sdlc-factory/
+.ai-run/runs/
+.agents/memory/sdlc/daily/
+docs/superpowers/tasks/*/**/*.local/
+docs/superpowers/tasks/*/**/task-*-brief.md

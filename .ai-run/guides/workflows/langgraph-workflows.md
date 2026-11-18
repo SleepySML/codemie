@@ -1,23 +1,34 @@
 # LangGraph Workflows
 
-## Workflow Executor
+**Project**: codemie · **Stack**: Python FastAPI · **Scope**: LangGraph workflow executor, nodes and transitions; service orchestration is in `architecture/service-layer-patterns.md`.
 
-Use the existing executor and node model for workflow behavior.
+## Overview
 
-| Avoid | Prefer |
-|---|---|
-| Creating a separate graph execution path for one workflow | Extend `WorkflowExecutor`, nodes, or validation utilities |
-| Bypassing workflow config parsing | Use existing config parsing and validation |
+`WorkflowExecutor` turns a `WorkflowConfig` into a LangGraph `StateGraph`: it creates a node per state, wires transitions (single target, parallel fan-out, condition, switch) and compiles the graph. Nodes subclass `BaseNode` and implement `execute` and `get_task`; autonomous workflows run on `SupervisorWorkflowExecutor`.
 
-Evidence: `WorkflowExecutor` imports `StateGraph` and workflow validation utilities at `src/codemie/workflows/workflow.py:29`.
+| Part | What it holds | Start here |
+|---|---|---|
+| `src/codemie/workflows/workflow.py` | executor: graph build, edges, run loop | `src/codemie/workflows/workflow.py::WorkflowExecutor` |
+| `src/codemie/workflows/nodes/` | node types | `src/codemie/workflows/nodes/base_node.py::BaseNode` |
+| `src/codemie/workflows/supervisor_workflow.py` | autonomous mode executor | `src/codemie/workflows/supervisor_workflow.py::SupervisorWorkflowExecutor` |
+| `src/codemie/workflows/validation/` | workflow config validation | `src/codemie/workflows/workflow.py::WorkflowExecutor.validate_workflow` |
 
-## Nodes And State
+## Key abstractions
 
-Keep node behavior in workflow node packages and state transitions in workflow utilities/config.
+| Abstraction | What it is | Where |
+|---|---|---|
+| BaseNode | abstract node: `execute` does the work, `get_task` builds the task text, `__call__` runs and updates state | `src/codemie/workflows/nodes/base_node.py::BaseNode.execute` |
 
-| Avoid | Prefer |
-|---|---|
-| Embedding node-specific behavior in services | Add or extend workflow nodes |
-| Manually evaluating transition expressions in feature code | Use workflow utility functions |
+## Workflows
 
-Evidence: workflow nodes are imported from `codemie.workflows.nodes` at `src/codemie/workflows/workflow.py:86`.
+### Rules
+- R1. Extend `WorkflowExecutor` (graph build, transitions, validation) instead of a separate graph execution path; autonomous mode runs on `SupervisorWorkflowExecutor`. Evidence: `src/codemie/workflows/workflow.py::WorkflowExecutor.validate_workflow`
+- R2. Add node behaviour as a `BaseNode` subclass implementing `execute` and `get_task`, and route transitions through the executor's transition handlers. Evidence: `src/codemie/workflows/nodes/base_node.py::BaseNode.execute`
+
+## Quick reference
+
+| Task | Do | Where |
+|---|---|---|
+| Add a node type | subclass `BaseNode` and register it where nodes are initialized | `src/codemie/workflows/workflow.py::WorkflowExecutor.initialize_node` |
+| Change transition handling | edit the transition handlers | `src/codemie/workflows/workflow.py::WorkflowExecutor._process_transition` |
+| Validate a workflow config | call `validate_workflow` | `src/codemie/workflows/workflow.py::WorkflowExecutor.validate_workflow` |

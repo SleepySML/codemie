@@ -1,45 +1,65 @@
 # External Services
 
-## Adapter Boundary
+**Project**: codemie · **Stack**: Python FastAPI · **Scope**: Adapter boundary, credentials, provider errors and inbound webhooks; model providers are in `integration/llm-providers.md`.
 
-Keep external API details out of routers and prompts.
+## Overview
 
-| Avoid | Prefer |
-|---|---|
-| Direct SDK calls from endpoint handlers | Service or toolkit adapter |
-| Provider-specific response objects crossing multiple layers | Normalize at the boundary |
+External systems are reached through `codemie_tools` toolkits (agent-callable) and `src/codemie/datasource/` processors (indexing). Inbound webhooks enter `WebhookService`, which verifies GitHub signatures, GitLab tokens or a legacy header and decides whether to dispatch.
 
-Evidence: datasource processors live under `src/codemie/datasource/`; tool integrations live under `src/codemie_tools/`.
+| Part | What it holds | Start here |
+|---|---|---|
+| `src/codemie_tools/` | toolkits per external system | `src/codemie_tools/base/toolkit_provider.py::is_toolkit_class` |
+| `src/codemie/datasource/` | datasource processors and loaders | `src/codemie/datasource/base_datasource_processor.py::BaseDatasourceProcessor` |
+| `src/codemie/triggers/bindings/` | inbound webhook verification and cron triggers | `src/codemie/triggers/bindings/webhook.py::WebhookService.verify_security_header` |
 
-## Credentials
+## External services
 
-Read external-service credentials through config/provider mechanisms.
+### Rules
+- R1. Give authentication failures an `error_cause` metric attribute (`gitlab_token_invalid`, `github_signature_verification_failed`, `invalid_security_header`); a filtered GitLab MR event is a success metric with `filtered_action`. Evidence: `src/codemie/triggers/bindings/webhook.py::WebhookService._verify_gitlab_token`
+- R2. Call external SDKs from a service, datasource processor or toolkit adapter and normalize provider objects at that boundary. Evidence: `src/codemie/datasource/base_datasource_processor.py::BaseDatasourceProcessor`
+- R3. Map provider exceptions to typed errors with fixed messages and retry only classified transient errors within a bounded budget, as the Exchange client does. Evidence: `src/codemie_tools/ms_exchange/write_retry.py::run_write`
+- R4. Return True from `verify_security_header` to dispatch and False to acknowledge a filtered event with 200; raise only for an authentication failure, since providers deactivate endpoints after repeated non-2xx. Evidence: `src/codemie/triggers/bindings/webhook.py::WebhookService.verify_security_header`
+- R5. Keep provider-specific verification in a `*_webhook_security.py` class and parse its body without raising; `webhook.py` owns the logging and metrics. Evidence: `src/codemie/triggers/bindings/gitlab_webhook_security.py::GitLabWebhookSecurity.verify_and_filter`
 
-| Avoid | Prefer |
-|---|---|
-| Hardcoded tokens or URLs | Environment/config-backed setup |
-| Logging provider credentials on failure | Sanitized error details |
+## Examples
 
-Evidence: README documents local environment variables and provider configuration at `README.md:47`.
+### Parsing a webhook body without raising
 
-### Provider error containment
+Source: `src/codemie/triggers/bindings/gitlab_webhook_security.py::GitLabWebhookSecurity._parse_body`
 
-| Avoid | Prefer |
-|---|---|
-| Surfacing provider exception text or pydantic validation output to users, logs or LLM-visible tool results | Map provider exceptions to typed errors with fixed messages, re-raised `from None` |
-| Retrying every failure | Retry only classified transient errors, with bounded attempts and a total time budget |
+```python
+    def _parse_body(cls, body: bytes | str | dict[str, object]) -> dict[str, object]:
+        """Best-effort parse of a webhook body into a dict; return ``{}`` on failure.
 
-Evidence: `src/codemie_tools/ms_exchange/client_factory.py`, `src/codemie_tools/ms_exchange/retry.py`, `src/codemie/service/settings/settings_tester.py`.
+        A parse failure or non-dict payload is treated as "not a merge_request event"
+        so downstream filter logic can pass it through unchanged.
+        """
+        if isinstance(body, dict):
+            return body
+        if isinstance(body, (bytes, bytearray)):
+            try:
+                body = body.decode("utf-8", errors="strict")
+            except UnicodeDecodeError:
+                return {}
+        if isinstance(body, str):
+            if not body:
+                return {}
+            try:
+                parsed = json.loads(body)
+            except (json.JSONDecodeError, TypeError):
+                return {}
+```
 
-## Inbound webhook providers
+## Common pitfalls
 
-Providers we host inbound webhooks for (GitHub, GitLab, …) have provider-specific delivery semantics that must be respected even when it looks like a plain HTTP endpoint.
+| Symptom | Cause | Fix | Evidence |
+|---|---|---|---|
+| A webhook with no security settings dispatches each request | `_handle_no_security` logs a warning and returns True for backward compatibility | configure a GitHub secret, GitLab token or security header on the webhook | `src/codemie/triggers/bindings/webhook.py::WebhookService._handle_no_security` |
 
-| Concern | Rule |
-|---|---|
-| Response codes for benign filtering | `2xx` for "received, filtered out"; `4xx` for auth failures only. Providers auto-deactivate endpoints after repeated non-2xx. |
-| Mixed event types on one URL | A single webhook URL can receive multiple event types. A filter for one event type must not reject the others — pass unknown/off-topic events through. |
-| Verification code location | Provider-specific verification (signature/token, event filter, metadata extraction) lives in a per-provider class under `triggers/bindings/*_webhook_security.py`. `webhook.py` composes them and owns logging/metrics tied to `Settings`. |
-| Dispatch signal | Every path of `WebhookService.verify_security_header` returns `bool` — `True` dispatches, `False` ACKs 200 without invoking the resource. `None` returns are a bug. |
-| Body parsing | Parse the raw payload once inside the security class. Treat parse failures as "not a known event" and pass through; do not raise from a parse error. |
-| Error causes on metrics | Distinguish auth failure (`*_token_invalid`, `*_signature_verification_failed`) from routine filter rejections (`*_event_filtered`) so dashboards don't merge attacks with benign filters. |
+## Quick reference
+
+| Task | Do | Where |
+|---|---|---|
+| Add a webhook provider | add a `*_webhook_security.py` class and a branch in `verify_security_header` | `src/codemie/triggers/bindings/webhook.py::WebhookService.verify_security_header` |
+| Add a datasource | subclass `BaseDatasourceProcessor` and implement `_index_name`, `_init_loader`, `_init_index` | `src/codemie/datasource/base_datasource_processor.py::BaseDatasourceProcessor` |
+| Pre-fill an integration URL for a deployment | set it under `tool_defaults` in the customer config | `README.md` § Customer Configuration |

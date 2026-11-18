@@ -1,34 +1,56 @@
 # Tool Overview
 
-## Toolkit Layers
+**Project**: codemie · **Stack**: Python FastAPI · **Scope**: Toolkit layers and the static tool registry; creating a toolkit is in `agents/custom-tool-creation.md`.
 
-The repo has two tool layers: platform agent tools and reusable external toolkits.
+## Overview
 
-| Layer | Location | Use |
+Two tool layers exist: platform adapters in `src/codemie/agents/tools/` and reusable toolkits in `src/codemie_tools/`. `tool_registry` maps a tool name to the classes that carry it and their class flags; `ensure_loaded` imports the tool packages once and logs, rather than raises, a failed import.
+
+| Part | What it holds | Start here |
 |---|---|---|
-| Agent platform tools | `src/codemie/agents/tools/` | Runtime tool interfaces, schema compatibility, platform adapters |
-| Reusable integrations | `src/codemie_tools/` | Git, cloud, QA, file analysis, data management, notification, and other toolkits |
+| `src/codemie/agents/tools/` | platform tool adapters | `src/codemie/agents/tools/schema_compatibility.py::transform_schema_for_gcp_compatibility` |
+| `src/codemie_tools/` | reusable toolkits per external system | `src/codemie_tools/base/toolkit_provider.py::is_toolkit_class` |
+| `src/codemie_tools/base/tool_registry.py` | static tool facts | `src/codemie_tools/base/tool_registry.py::ToolRecord` |
 
-Evidence: both packages are included from `src` at `pyproject.toml:16`.
+## Tool layers
 
-## Integration Boundaries
+### Rules
+- R1. Place platform tool adapters in `src/codemie/agents/tools/` and reusable external toolkits in `src/codemie_tools/`, the two packages Poetry ships. Evidence: `pyproject.toml::packages`
+- R2. Call GitLab, Jira and cloud SDKs from a service or a `codemie_tools` adapter and return normalized tool output, not provider objects. Evidence: `src/codemie_tools/base/codemie_tool.py::CodeMieTool._run`
+- R3. Use `tool_registry.lookup(name)` instead of a new scan or name list of tool classes. Evidence: `src/codemie_tools/base/tool_registry.py::lookup`
 
-Keep external service clients behind toolkit or service boundaries.
+## Examples
 
-| Avoid | Prefer |
-|---|---|
-| Calling GitLab/Jira/cloud SDKs from routers | Use a service or `codemie_tools` adapter |
-| Exposing low-level provider objects to agents | Return normalized tool outputs |
+### Building a ToolRecord for a tool name
 
-Evidence: Git provider toolkits are grouped under `src/codemie_tools/git/`.
+Source: `src/codemie_tools/base/tool_registry.py::lookup`
 
-## Static Tool Facts
+```python
+def lookup(name: str) -> ToolRecord | None:
+    classes = _CLASSES_BY_NAME.get(name)
+    if not classes:
+        return None
+    return ToolRecord(
+        name=name,
+        classes=tuple(classes),
+        modules=tuple(c.__module__ for c in classes),
+        script_callable=tuple(bool(getattr(c, "script_callable", False)) for c in classes),
+        step_config_fields=tuple(tuple(getattr(c, "step_config_fields", ())) for c in classes),
+        tool_access_filter=tuple(getattr(c, "tool_access_filter", None) for c in classes),
+        flags=tuple(frozenset(f for f in _TOOL_FLAGS if getattr(c, f, False) is True) for c in classes),
+    )
+```
 
-`src/codemie_tools/base/tool_registry.py` is the single source of static tool facts (which tool classes exist under which name, and their `script_callable` flag). Every concrete `CodeMieTool` subclass registers itself on definition.
+## Common pitfalls
 
-| Avoid | Prefer |
-|---|---|
-| A new scan, catalog or name list of tool classes | Read `tool_registry.lookup(name)` |
-| Hard-coding a new per-class fact elsewhere | Extend `ToolRecord` in `tool_registry.py` |
+| Symptom | Cause | Fix | Evidence |
+|---|---|---|---|
+| A tool name is unknown to `tool_registry.lookup` | `register` skips abstract classes, classes without a default `name`, and classes outside the tool module roots | give the class a default `name` and define it under a tool package | `src/codemie_tools/base/tool_registry.py::register` |
 
-Evidence: `CodeMieTool.__pydantic_init_subclass__` calls `tool_registry.register`; `ProjectScope.resolve` uses it to skip building excluded tools.
+## Quick reference
+
+| Task | Do | Where |
+|---|---|---|
+| Check whether a tool may run in scripts | call `is_script_callable` | `src/codemie_tools/base/tool_registry.py::is_script_callable` |
+| Read the class flags of a tool | call `lookup(name)` | `src/codemie_tools/base/tool_registry.py::lookup` |
+| Load every tool class before a lookup | call `ensure_loaded` | `src/codemie_tools/base/tool_registry.py::ensure_loaded` |

@@ -1,23 +1,25 @@
-# Service Testing Patterns
+# Testing Service Patterns
 
-## Service Isolation
+**Project**: codemie · **Stack**: Python FastAPI · **Scope**: Service test isolation and async service tests; suite-wide test patterns are in `testing/testing-patterns.md`.
 
-Test service orchestration with repositories/providers mocked or controlled unless the behavior is explicitly integration-level.
+## Overview
 
-| Avoid | Prefer |
-|---|---|
-| Hitting live cloud or SaaS services in unit tests | Mock provider/toolkit boundaries |
-| Testing router and repository details through a service test | Focus on service decisions and calls |
+Service tests build the service with its collaborators mocked and assert decisions and calls; async service methods are tested with `@pytest.mark.asyncio`, and the fixture loop scope is per function.
 
-Evidence: service modules live under `src/codemie/service/`; repository tests are separated under `tests/codemie/repository/`.
+| Part | What it holds | Start here |
+|---|---|---|
+| `tests/codemie/service/` | service tests, mirroring `src/codemie/service/` | `tests/codemie/service/stale_datasource/test_stale_datasource_service.py::TestFetchLifecycleMetrics` |
 
-## Async Services
+## Service tests
 
-Use async test support for async service paths.
+### Rules
+- R1. Test service decisions with repositories and providers mocked; hit live services only in marked integration tests. Evidence: `tests/codemie/service/stale_datasource/test_stale_datasource_service.py::TestComputeBaseToolNames`
+- R2. Mark async service tests `@pytest.mark.asyncio` and await the call. Evidence: `tests/codemie/service/stale_datasource/test_stale_datasource_service.py::TestFetchLifecycleMetrics`
 
-| Avoid | Prefer |
-|---|---|
-| Calling async methods without awaiting | Mark async tests through pytest async support |
-| Hiding event-loop errors with sync wrappers | Test the async boundary directly |
+## Quick reference
 
-Evidence: `pytest-asyncio` is a dev dependency at `pyproject.toml:159`.
+| Task | Do | Where |
+|---|---|---|
+| Test an async service method | mark the test `@pytest.mark.asyncio` and await the call | `tests/codemie/service/stale_datasource/test_stale_datasource_service.py::TestFetchLifecycleMetrics.test_returns_last_seen_for_matching_datasource` |
+| Test a transaction against a real engine | patch `PostgresClient.get_engine` to an in-memory SQLite engine | `tests/codemie/clients/test_postgres_transactional_session.py::sqlite_engine` |
+| Find the tests of a service | open the mirrored path under `tests/codemie/service/` | `tests/codemie/service/stale_datasource/test_stale_datasource_service.py::TestComputeBaseToolNames` |
